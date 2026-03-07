@@ -7,7 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@0.3.0/dist/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@coinbase/wallet-sdk@4.0.4/dist/browser-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@coinbase/wallet-sdk@3.9.3/dist/CoinbaseWalletSDK.min.js"></script>
   <style>
     body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000}
     canvas{display:block}
@@ -1004,16 +1004,23 @@ window.W3 = {
   // ── Connect via Coinbase Smart Wallet SDK ─────────────────
   async connectBase() {
     try {
+      const CoinbaseWalletSDK = window.CoinbaseWalletSDK || window.WalletSDK
+      if (!CoinbaseWalletSDK) {
+        // Pure fallback if SDK didn't load
+        if (!window.ethereum) { alert('No wallet found! Please install MetaMask or Coinbase Wallet.'); return false }
+        await window.ethereum.request({ method: 'eth_requestAccounts' })
+        return await this.finalise(window.ethereum)
+      }
       const sdk = new CoinbaseWalletSDK({
         appName: 'Base Runner',
-        appLogoUrl: 'https://crazyrunner.vercel.app',
-        preference: 'all' // shows all wallets — Base, MetaMask, etc
+        appChainIds: [8453],
       })
       const provider = sdk.makeWeb3Provider()
       await provider.request({ method: 'eth_requestAccounts' })
       return await this.finalise(provider)
     } catch(e) {
-      // fallback to injected wallet
+      if(e.code === 4001) { alert('Connection rejected — please approve in your wallet.'); return false }
+      // fallback to injected
       try {
         if(window.ethereum) {
           await window.ethereum.request({ method: 'eth_requestAccounts' })
