@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@0.3.0/dist/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@coinbase/wallet-sdk@4.0.4/dist/browser-bundle.js"></script>
   <style>
     body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000}
     canvas{display:block}
@@ -1000,15 +1001,28 @@ window.W3 = {
     return true
   },
 
-  // ── Connect via Base App / Coinbase Smart Wallet ───────────
+  // ── Connect via Coinbase Smart Wallet SDK ─────────────────
   async connectBase() {
     try {
-      // Try Coinbase Wallet provider first (injected by Base/Coinbase app)
-      const p = window.coinbaseWalletExtension || window.ethereum
-      if (!p) { alert('No wallet found! Install Coinbase Wallet or MetaMask.'); return false }
-      await p.request({method:'eth_requestAccounts'})
-      return await this.finalise(p)
-    } catch(e) { this._handleErr(e); return false }
+      const sdk = new CoinbaseWalletSDK({
+        appName: 'Base Runner',
+        appLogoUrl: 'https://crazyrunner.vercel.app',
+        preference: 'all' // shows all wallets — Base, MetaMask, etc
+      })
+      const provider = sdk.makeWeb3Provider()
+      await provider.request({ method: 'eth_requestAccounts' })
+      return await this.finalise(provider)
+    } catch(e) {
+      // fallback to injected wallet
+      try {
+        if(window.ethereum) {
+          await window.ethereum.request({ method: 'eth_requestAccounts' })
+          return await this.finalise(window.ethereum)
+        }
+      } catch(e2) { this._handleErr(e2) }
+      this._handleErr(e)
+      return false
+    }
   },
 
   // ── Connect via MetaMask ───────────────────────────────────
@@ -1113,6 +1127,9 @@ window.W3 = {
     }).join('')
   }
 }
+
+// ── Privy App ID ─────────────────────────────────────────────
+const PRIVY_APP_ID = 'cmmg9fbg800jv0cl86x57h6mh'
 
 // ── Wire up buttons ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', ()=>{
