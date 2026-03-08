@@ -949,13 +949,13 @@ console.log('[ASSETS] All generated')
 // ═══════════════════════════════════════════════════════════════
 const BASE_CHAIN_ID         = '0x2105'   // Base mainnet  (8453)
 const BASE_CHAIN_ID_SEPOLIA = '0x14a34'  // Base Sepolia  (84532)
-const ACTIVE_CHAIN          = BASE_CHAIN_ID_SEPOLIA // ← swap to BASE_CHAIN_ID for mainnet
+const ACTIVE_CHAIN          = BASE_CHAIN_ID        // Base Mainnet — live!
 
 const LEADERBOARD_ABI = [
   "function submitScore(uint256 score) external",
   "function getTopScores() external view returns (tuple(address player, uint256 score, uint256 timestamp)[])"
 ]
-const LEADERBOARD_ADDRESS = "0x6f42Edb8bBD45329ACE74A0Fa546F93d6b727882"  // Base Sepolia
+const LEADERBOARD_ADDRESS = "0x3ff2fad90059Cd49F175EA7BB8f777BDae7fd853"  // Base Mainnet
 
 // ── Leaderboard mock data (shown until contract is deployed) ────
 const MOCK_SCORES = [
@@ -3140,23 +3140,26 @@ function showLeaderboardPage(scene) {
   `
   document.body.appendChild(page)
 
-  // Load real scores from contract
+  // Load real scores from contract using public RPC (no wallet needed)
   ;(async ()=>{
     const rowsEl = document.getElementById('lb-rows')
     if(!rowsEl) return
     try {
-      if(window.W3 && LEADERBOARD_ADDRESS) {
-        const raw = await window.W3.getTopScores()
-        if(raw && raw.length > 0) {
-          const mapped = raw.map(x=>({addr:window.W3.shortAddr(x.player), score:Number(x.score)}))
-          rowsEl.innerHTML = renderRows(mapped)
-        } else {
-          rowsEl.innerHTML = renderRows([])
-        }
+      const RPC = ACTIVE_CHAIN === BASE_CHAIN_ID
+        ? 'https://mainnet.base.org'
+        : 'https://sepolia.base.org'
+      const readProvider = new ethers.providers.JsonRpcProvider(RPC)
+      const contract = new ethers.Contract(LEADERBOARD_ADDRESS, LEADERBOARD_ABI, readProvider)
+      const raw = await contract.getTopScores()
+      if(raw && raw.length > 0) {
+        const shortAddr = a => a ? a.slice(0,6)+'...'+a.slice(-4) : ''
+        const mapped = raw.map(x=>({addr:shortAddr(x.player), score:Number(x.score)}))
+        rowsEl.innerHTML = renderRows(mapped)
       } else {
         rowsEl.innerHTML = renderRows([])
       }
     } catch(e) {
+      console.error('Leaderboard load error:', e)
       rowsEl.innerHTML = renderRows([])
     }
   })()
