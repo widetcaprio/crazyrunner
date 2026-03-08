@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
-    body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000}
+    body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:flex-end;min-height:100vh;background:#000}
     canvas{display:block}
   </style>
 </head>
@@ -641,6 +641,7 @@ console.log('[ASSETS] All generated')
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
 
   #w3-blur-overlay {
+    display: none !important;
     position: fixed; inset: 0; z-index: 999;
     backdrop-filter: blur(18px) brightness(0.45) saturate(0.7);
     -webkit-backdrop-filter: blur(18px) brightness(0.45) saturate(0.7);
@@ -1256,7 +1257,7 @@ class StartScene extends Phaser.Scene {
     // ══ BACKGROUND ═══════════════════════════════════════════════════════════
     // Deep sky
     const sky=this.add.graphics()
-    sky.fillGradientStyle(0x040310,0x040310,0x0c0820,0x0c0820,1)
+    sky.fillGradientStyle(0x020408,0x020408,0x040608,0x040608,1)
     sky.fillRect(0,0,W,H)
 
     // Stars
@@ -1270,7 +1271,7 @@ class StartScene extends Phaser.Scene {
 
     // LEFT — volcano + lava
     const lv=this.add.graphics()
-    lv.fillStyle(0x0a0400,1);lv.fillRect(0,H*0.28,W*0.44,H*0.72)
+    lv.fillStyle(0x040608,1);lv.fillRect(0,H*0.28,W*0.44,H*0.72+10)
     lv.fillStyle(0xdd2200,0.20);lv.fillEllipse(W*0.02,H*0.52,W*0.72,H*0.52)
     lv.fillStyle(0xff4400,0.10);lv.fillEllipse(W*0.05,H*0.46,W*0.44,H*0.36)
     // Volcano
@@ -1297,7 +1298,7 @@ class StartScene extends Phaser.Scene {
 
     // RIGHT — ice mountains
     const ic=this.add.graphics()
-    ic.fillStyle(0x08121e,0.97);ic.fillRect(W*0.56,0,W*0.44,H*0.74)
+    ic.fillStyle(0x040608,0.97);ic.fillRect(W*0.56,0,W*0.44,H*0.74+10)
     // Main peak
     ic.fillStyle(0xb0cce0,1);ic.fillTriangle(W*0.70,H*0.52,W*1.05,H*0.52,W*0.88,H*0.01)
     ic.fillStyle(0xcce0f4,1);ic.fillTriangle(W*0.76,H*0.44,W*1.02,H*0.44,W*0.89,H*0.05)
@@ -1330,20 +1331,31 @@ class StartScene extends Phaser.Scene {
     hz.fillStyle(0x2255cc,0.09);hz.fillEllipse(W*0.85,H*0.50,W*0.38,65)
     hz.fillStyle(0xff9922,0.07);hz.fillEllipse(W*0.50,H*0.52,W*0.50,55)
 
-    // Ground strip
+    // Ground strip — seamless continuation of sky bg
     const gs=this.add.graphics()
-    gs.fillStyle(0x040608,1);gs.fillRect(0,H*0.89,W,H*0.11)
+    // Base — same dark as sky so no seam
+    gs.fillStyle(0x040608,1);gs.fillRect(0,H*0.52,W,H*0.48)
+    // Left fire tint overlay only
+    gs.fillStyle(0xff2200,0.05);gs.fillRect(0,H*0.52,W*0.35,H*0.48)
+    // Right ice tint overlay only
+    gs.fillStyle(0x2266aa,0.05);gs.fillRect(W*0.65,H*0.52,W*0.35,H*0.48)
+    // Center desert tint overlay only
+    gs.fillStyle(0xc87800,0.04);gs.fillRect(W*0.30,H*0.52,W*0.40,H*0.48)
+    // Biome edge glow lines
+    gs.lineStyle(1,0xff4400,0.25);gs.lineBetween(0,H*0.52,W*0.35,H*0.52)
+    gs.lineStyle(1,0xffaa00,0.15);gs.lineBetween(W*0.30,H*0.52,W*0.70,H*0.52)
+    gs.lineStyle(1,0x44aadd,0.25);gs.lineBetween(W*0.65,H*0.52,W,H*0.52)
 
     // Neon tracks — NO separate lines, just 3 clean beams
     const nt=this.add.graphics()
     // Fire track
-    nt.lineStyle(4,0xff4400,0.90);nt.lineBetween(W*0.13,H*0.92,W*0.41,H*0.54)
-    nt.lineStyle(2,0xff7700,0.40);nt.lineBetween(W*0.09,H*0.92,W*0.41,H*0.54)
+    nt.lineStyle(4,0xff4400,0.90);nt.lineBetween(W*0.13,H*0.98,W*0.41,H*0.54)
+    nt.lineStyle(2,0xff7700,0.40);nt.lineBetween(W*0.09,H*0.98,W*0.41,H*0.54)
     // Ice track
-    nt.lineStyle(4,0x33aaff,0.88);nt.lineBetween(W*0.87,H*0.92,W*0.59,H*0.54)
-    nt.lineStyle(2,0x66ccff,0.40);nt.lineBetween(W*0.91,H*0.92,W*0.59,H*0.54)
+    nt.lineStyle(4,0x33aaff,0.88);nt.lineBetween(W*0.87,H*0.98,W*0.59,H*0.54)
+    nt.lineStyle(2,0x66ccff,0.40);nt.lineBetween(W*0.91,H*0.98,W*0.59,H*0.54)
     // Center cyan track
-    nt.lineStyle(4,0x00ddff,0.80);nt.lineBetween(W*0.50,H*0.92,W*0.50,H*0.54)
+    nt.lineStyle(4,0x00ddff,0.80);nt.lineBetween(W*0.50,H*0.98,W*0.50,H*0.54)
 
     // Embers (left)
     for(let e=0;e<10;e++){
@@ -1513,45 +1525,49 @@ class StartScene extends Phaser.Scene {
     // Activate button properly when char selected
     cards.forEach(c=>c.ctr)  // just ensure cards rendered
 
-    // Controls hint — moved up above bottom buttons
-    this.add.text(W/2,H*0.84,'SPACE = Jump   |   Hold C = Crouch',{
-      fontFamily:'Arial Black,sans-serif',fontSize:'14px',color:'#aabbcc',
+    // Controls hint — above bottom buttons
+    this.add.text(W/2,H*0.80,'SPACE = Jump   |   Hold C = Crouch',{
+      fontFamily:'Arial Black,sans-serif',fontSize:'13px',color:'#aabbcc',
       stroke:'#000020',strokeThickness:3
     }).setOrigin(0.5)
 
-    // ══ BOTTOM 2 BUTTONS ═══════════════════════════════════════════════════
-    const makeBotBtn=(x,label,icon,color)=>{
-      const ctr=this.add.container(x,H-38)
-      const bg=this.add.graphics()
-      bg.fillStyle(0x000000,0.6);bg.fillRoundedRect(-90,-28,180,52,16)
-      bg.lineStyle(2,color,0.7);bg.strokeRoundedRect(-90,-28,180,52,16)
-      const txt=this.add.text(0,0,icon+'  '+label,{
-        fontFamily:'Arial Black,sans-serif',fontSize:'15px',color:'#ffffff',
-        stroke:'#000000',strokeThickness:3
-      }).setOrigin(0.5)
-      ctr.add([bg,txt])
-      const hit=this.add.rectangle(x,H-38,180,52).setInteractive()
-      hit.on('pointerover',()=>this.tweens.add({targets:ctr,scaleX:1.05,scaleY:1.05,duration:100}))
-      hit.on('pointerout',()=>this.tweens.add({targets:ctr,scaleX:1,scaleY:1,duration:100}))
-      return {ctr,hit}
-    }
+    // ══ BOTTOM 2 BUTTONS — full width flush to bottom ════════════════════════
+    const botBtnH = 64
 
-    // Play button (left)
-    const playBot=makeBotBtn(W*0.28,'PLAY','▶',0x00aaff)
-    playBot.hit.on('pointerdown',()=>{
-      if(this.selectedChar){
-        SFX.btnStart()
-        this.cameras.main.fadeOut(220,0,0,0)
-        this.time.delayedCall(220,()=>this.scene.start('GameScene',{selectedCharacter:this.selectedChar}))
-      } else {
-        // flash hint to pick a character
-        this.cameras.main.flash(300,255,100,0,false)
-      }
+    // HOME/PLAY button (left half) — goes to character select (already here)
+    const homeBotBg = this.add.graphics()
+    homeBotBg.fillStyle(0x1a3a6b,1); homeBotBg.fillRect(0,H-botBtnH,W/2,botBtnH+10)
+    homeBotBg.fillStyle(0x2563eb,1); homeBotBg.fillRect(0,H-botBtnH,W/2,3)
+    this.add.text(W/4,H-botBtnH/2,'🏠  HOME',{
+      fontFamily:'Arial Black,sans-serif',fontSize:'18px',color:'#ffffff',
+      stroke:'#0a1a3d',strokeThickness:3
+    }).setOrigin(0.5).setDepth(10)
+    homeBotBg.setDepth(9)
+    const homeHitBot = this.add.rectangle(W/4,H-botBtnH/2,W/2,botBtnH).setInteractive({useHandCursor:true}).setDepth(11)
+    homeHitBot.on('pointerover',()=>{ homeBotBg.clear(); homeBotBg.fillStyle(0x2563eb,1); homeBotBg.fillRect(0,H-botBtnH,W/2,botBtnH+10); homeBotBg.fillStyle(0x60a5fa,1); homeBotBg.fillRect(0,H-botBtnH,W/2,3) })
+    homeHitBot.on('pointerout',()=>{ homeBotBg.clear(); homeBotBg.fillStyle(0x1a3a6b,1); homeBotBg.fillRect(0,H-botBtnH,W/2,botBtnH+10); homeBotBg.fillStyle(0x2563eb,1); homeBotBg.fillRect(0,H-botBtnH,W/2,3) })
+    homeHitBot.on('pointerdown',()=>{
+      // Already on home/character select — scroll to top or flash
+      this.cameras.main.flash(200,0,100,255,false)
     })
 
-    // Leaderboard button (right)
-    const lbBot=makeBotBtn(W*0.72,'LEADERBOARD','🏆',0xffaa00)
-    lbBot.hit.on('pointerdown',()=>{
+    // Divider
+    const botDiv = this.add.graphics().setDepth(10)
+    botDiv.lineStyle(2,0x334466,1); botDiv.lineBetween(W/2,H-botBtnH,W/2,H)
+
+    // LEADERBOARD button (right half)
+    const lbBotBg = this.add.graphics()
+    lbBotBg.fillStyle(0x3a2800,1); lbBotBg.fillRect(W/2,H-botBtnH,W/2,botBtnH+10)
+    lbBotBg.fillStyle(0xffaa00,1); lbBotBg.fillRect(W/2,H-botBtnH,W/2,3)
+    this.add.text(W*0.75,H-botBtnH/2,'🏆  LEADERBOARD',{
+      fontFamily:'Arial Black,sans-serif',fontSize:'16px',color:'#ffcc44',
+      stroke:'#1a0800',strokeThickness:3
+    }).setOrigin(0.5).setDepth(10)
+    lbBotBg.setDepth(9)
+    const lbHitBot = this.add.rectangle(W*0.75,H-botBtnH/2,W/2,botBtnH).setInteractive({useHandCursor:true}).setDepth(11)
+    lbHitBot.on('pointerover',()=>{ lbBotBg.clear(); lbBotBg.fillStyle(0xffaa00,1); lbBotBg.fillRect(W/2,H-botBtnH,W/2,botBtnH+10); lbBotBg.fillStyle(0xffcc00,1); lbBotBg.fillRect(W/2,H-botBtnH,W/2,3) })
+    lbHitBot.on('pointerout',()=>{ lbBotBg.clear(); lbBotBg.fillStyle(0x3a2800,1); lbBotBg.fillRect(W/2,H-botBtnH,W/2,botBtnH+10); lbBotBg.fillStyle(0xffaa00,1); lbBotBg.fillRect(W/2,H-botBtnH,W/2,3) })
+    lbHitBot.on('pointerdown',()=>{
       SFX.btnClick()
       showLeaderboardPage(this)
     })
@@ -1996,7 +2012,7 @@ class GameScene extends Phaser.Scene {
     const goDivBtn=this.add.graphics()
     goDivBtn.lineStyle(1,0x2a3a6a,1);goDivBtn.lineBetween(-220,156,220,156)
 
-    // ── PLAY AGAIN button                                      y: +172 to +228
+    // ── PLAY AGAIN button  y: +172
     const goBtn=this.add.graphics()
     goBtn.fillStyle(0x16a34a,1);goBtn.fillRoundedRect(-145,170,290,58,29)
     goBtn.lineStyle(2.5,0x22c55e,1);goBtn.strokeRoundedRect(-145,170,290,58,29)
@@ -2006,22 +2022,21 @@ class GameScene extends Phaser.Scene {
       stroke:'#0a3d1f',strokeThickness:3
     }).setOrigin(0.5,0.5)
 
-    // ── Hint text                                              y: +248
-    const goKbHint=this.add.text(0,248,'⌨  SPACE  or  📱  TAP',{
-      fontFamily:'Arial Black,sans-serif',fontSize:'18px',color:'#ffffff',
-      stroke:'#000000',strokeThickness:3
-    }).setOrigin(0.5,0.5)
+    // Play Again hit area — ONLY this restarts the game
+    const playAgainHit=this.add.rectangle(0,199,290,58).setInteractive({useHandCursor:true})
+    playAgainHit.on('pointerover',()=>this.tweens.add({targets:[goBtn,this.restartHint],scaleX:1.04,scaleY:1.04,duration:100}))
+    playAgainHit.on('pointerout',()=>this.tweens.add({targets:[goBtn,this.restartHint],scaleX:1,scaleY:1,duration:100}))
+    playAgainHit.on('pointerdown',()=>{ SFX.btnStart(); this._doRestart() })
 
-    // ── SUBMIT SCORE TO BASE BUTTON ───────────────────────────────────────────
+    // ── SUBMIT SCORE TO BASE BUTTON — inside card ─────────────────────────────
     const submitBtnGfx = this.add.graphics()
-    const submitBtnTxt = this.add.text(0, 295, '⛓  Save Score to Base', {
-      fontFamily:'Arial Black,sans-serif', fontSize:'20px', color:'#ffffff',
+    const submitBtnTxt = this.add.text(0, 248, '⛓  Save Score to Base', {
+      fontFamily:'Arial Black,sans-serif', fontSize:'17px', color:'#ffffff',
       stroke:'#001133', strokeThickness:3
     }).setOrigin(0.5, 0.5)
 
     const drawSubmitBtn = (state) => {
       submitBtnGfx.clear()
-      // state: 'idle' | 'no_wallet' | 'submitting' | 'done' | 'no_contract'
       const colors = {
         idle:        [0x0052ff, 0x3b82f6],
         no_wallet:   [0x555555, 0x888888],
@@ -2030,9 +2045,9 @@ class GameScene extends Phaser.Scene {
         no_contract: [0xcc5500, 0xff8800],
       }
       const [fill, border] = colors[state] || colors.idle
-      submitBtnGfx.fillStyle(fill, 1);        submitBtnGfx.fillRoundedRect(-145,280,290,30,15)
-      submitBtnGfx.lineStyle(2, border, 1);   submitBtnGfx.strokeRoundedRect(-145,280,290,30,15)
-      submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,280,290,12,15)
+      submitBtnGfx.fillStyle(fill, 1);        submitBtnGfx.fillRoundedRect(-145,232,290,34,17)
+      submitBtnGfx.lineStyle(2, border, 1);   submitBtnGfx.strokeRoundedRect(-145,232,290,34,17)
+      submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
     }
     drawSubmitBtn(window.W3.connected ? 'idle' : 'no_wallet')
 
@@ -2042,7 +2057,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Hit area for submit button
-    const submitHit = this.add.rectangle(0, 295, 290, 30).setInteractive({useHandCursor:true})
+    const submitHit = this.add.rectangle(0, 248, 290, 34).setInteractive({useHandCursor:true})
     submitHit.on('pointerdown', async () => {
       if (!window.W3.connected) {
         // Try to connect now
@@ -2073,7 +2088,7 @@ class GameScene extends Phaser.Scene {
 
     this.centerMessage.add([goOverlay,goCard,goDivTop,goDivMid,goDivBtn,goBtn,
       this.msgTitle,this.msgScoreLabel,this.msgRoast,this.msgScore,
-      this.msgCoins,this.msgTotal,this.restartHint,goKbHint,
+      this.msgCoins,this.msgTotal,this.restartHint,playAgainHit,
       submitBtnGfx, submitBtnTxt, submitHit])
 
     this.tweens.add({targets:[goBtn,this.restartHint],alpha:{from:1,to:0.75},duration:700,yoyo:true,repeat:-1,ease:'Sine.InOut'})
@@ -2081,7 +2096,7 @@ class GameScene extends Phaser.Scene {
 
     this.spaceKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
     this.cKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C)
-    this.input.on('pointerdown',()=>{if(this.isGameOver){this._doRestart();return};this._tryJump()})
+    this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
 
     this.score=0;this.sessionCoins=0;this.isGameOver=false;this.isCrouching=false;this.isJumping=false;this._onBoat=false
     this.runTimeMs=0;this.currentSpeed=GameSettings.gameplay.baseSpeed
@@ -2540,41 +2555,68 @@ class GameScene extends Phaser.Scene {
     }})
     if(window.FarcadeSDK?.singlePlayer?.actions?.gameOver) window.FarcadeSDK.singlePlayer.actions.gameOver({score:this.score})
 
-    // ── Bottom buttons on game over ──────────────────────────
+    // ── Bottom 2 buttons — full width, appear after game over ──
     this.time.delayedCall(600, ()=>{
       const W=this.scale.width, H=this.scale.height
-      const makGOBtn=(x,label,icon,color,cb)=>{
-        const ctr=this.add.container(x,H-38).setAlpha(0)
-        const bg=this.add.graphics()
-        bg.fillStyle(0x000000,0.7);bg.fillRoundedRect(-90,-28,180,52,16)
-        bg.lineStyle(2,color,0.8);bg.strokeRoundedRect(-90,-28,180,52,16)
-        const txt=this.add.text(0,0,icon+'  '+label,{
-          fontFamily:'Arial Black,sans-serif',fontSize:'15px',color:'#ffffff',
-          stroke:'#000000',strokeThickness:3
-        }).setOrigin(0.5)
-        ctr.add([bg,txt])
-        this.tweens.add({targets:ctr,alpha:1,y:H-42,duration:350,ease:'Back.Out'})
-        const hit=this.add.rectangle(x,H-38,180,52).setInteractive()
-        hit.on('pointerover',()=>this.tweens.add({targets:ctr,scaleX:1.05,scaleY:1.05,duration:100}))
-        hit.on('pointerout',()=>this.tweens.add({targets:ctr,scaleX:1,scaleY:1,duration:100}))
-        hit.on('pointerdown',cb)
-      }
-      // Play again
-      makGOBtn(W*0.28,'PLAY AGAIN','▶',0x00aaff,()=>{
-        SFX.btnStart()
+      const btnH = 64
+      const btnY = H - btnH/2  // flush to bottom
+
+      // HOME button (left half)
+      const homeBg = this.add.graphics()
+      homeBg.fillStyle(0x1a3a6b,1)
+      homeBg.fillRect(0, H-btnH, W/2, btnH)
+      homeBg.fillStyle(0x2563eb,1)
+      homeBg.fillRect(0, H-btnH, W/2, 3) // top accent line
+      const homeTxt = this.add.text(W/4, H-btnH/2, '🏠  HOME',{
+        fontFamily:'Arial Black,sans-serif',fontSize:'18px',color:'#ffffff',
+        stroke:'#0a1a3d',strokeThickness:3
+      }).setOrigin(0.5).setDepth(200)
+      homeBg.setDepth(199)
+
+      const homeHit = this.add.rectangle(W/4, H-btnH/2, W/2, btnH).setInteractive({useHandCursor:true}).setDepth(201)
+      homeHit.on('pointerover',()=>{ homeBg.clear(); homeBg.fillStyle(0x2563eb,1); homeBg.fillRect(0,H-btnH,W/2,btnH); homeBg.fillStyle(0x60a5fa,1); homeBg.fillRect(0,H-btnH,W/2,3) })
+      homeHit.on('pointerout',()=>{ homeBg.clear(); homeBg.fillStyle(0x1a3a6b,1); homeBg.fillRect(0,H-btnH,W/2,btnH); homeBg.fillStyle(0x2563eb,1); homeBg.fillRect(0,H-btnH,W/2,3) })
+      homeHit.on('pointerdown',()=>{
+        SFX.btnClick()
         this.cameras.main.fadeOut(220,0,0,0)
         this.time.delayedCall(220,()=>this.scene.start('StartScene'))
       })
-      // Leaderboard
-      makGOBtn(W*0.72,'LEADERBOARD','🏆',0xffaa00,()=>{
+
+      // Divider line between buttons
+      const div = this.add.graphics().setDepth(200)
+      div.lineStyle(2, 0x334466, 1)
+      div.lineBetween(W/2, H-btnH, W/2, H)
+
+      // LEADERBOARD button (right half)
+      const lbBg = this.add.graphics()
+      lbBg.fillStyle(0x3a2800,1)
+      lbBg.fillRect(W/2, H-btnH, W/2, btnH)
+      lbBg.fillStyle(0xffaa00,1)
+      lbBg.fillRect(W/2, H-btnH, W/2, 3) // top accent line
+      const lbTxt = this.add.text(W*0.75, H-btnH/2, '🏆  LEADERBOARD',{
+        fontFamily:'Arial Black,sans-serif',fontSize:'16px',color:'#ffcc44',
+        stroke:'#1a0800',strokeThickness:3
+      }).setOrigin(0.5).setDepth(200)
+      lbBg.setDepth(199)
+
+      const lbHit = this.add.rectangle(W*0.75, H-btnH/2, W/2, btnH).setInteractive({useHandCursor:true}).setDepth(201)
+      lbHit.on('pointerover',()=>{ lbBg.clear(); lbBg.fillStyle(0xffaa00,0.25); lbBg.fillRect(W/2,H-btnH,W/2,btnH); lbBg.fillStyle(0xffcc00,1); lbBg.fillRect(W/2,H-btnH,W/2,3) })
+      lbHit.on('pointerout',()=>{ lbBg.clear(); lbBg.fillStyle(0x3a2800,1); lbBg.fillRect(W/2,H-btnH,W/2,btnH); lbBg.fillStyle(0xffaa00,1); lbBg.fillRect(W/2,H-btnH,W/2,3) })
+      lbHit.on('pointerdown',()=>{
         SFX.btnClick()
         showLeaderboardPage(this)
+      })
+
+      // Fade in both buttons
+      ;[homeBg, homeTxt, lbBg, lbTxt, div].forEach(o=>{
+        o.setAlpha(0)
+        this.tweens.add({targets:o,alpha:1,duration:300,ease:'Sine.Out'})
       })
     })
   }
 
   update(time,delta){
-    if(this.isGameOver){if(this.spaceKey?.isDown)this._doRestart();return}
+    if(this.isGameOver) return  // no spacebar/click restart — use buttons only
     if(Phaser.Input.Keyboard.JustDown(this.spaceKey))this._tryJump()
     if(this.player?.body?.blocked.down){
       if(this.isJumping){
