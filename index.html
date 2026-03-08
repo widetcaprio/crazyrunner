@@ -1471,13 +1471,13 @@ class StartScene extends Phaser.Scene {
         startBtn.setAlpha(1)
         startBtn.getAt(0).setInteractive()
         this.tweens.killTweensOf(startBtn)
-        this.tweens.add({targets:startBtn,y:{from:H-106,to:H-110},duration:700,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+        this.tweens.add({targets:startBtn,y:{from:H*0.72,to:H*0.72-4},duration:700,yoyo:true,repeat:-1,ease:'Sine.InOut'})
       })
       cards.push({ctr,draw:drawCard})
     })
 
     // ══ START BUTTON — Container so hover/scale works correctly ═══════════════
-    const btnY=H-106
+    const btnY=H*0.72
     startBtn=this.add.container(W/2,btnY).setAlpha(0.32)
 
     const btnHit=this.add.rectangle(0,0,300,56).setInteractive().setActive(false)
@@ -1513,11 +1513,48 @@ class StartScene extends Phaser.Scene {
     // Activate button properly when char selected
     cards.forEach(c=>c.ctr)  // just ensure cards rendered
 
-    // Controls hint
-    this.add.text(W/2,H-44,'SPACE = Jump   |   Hold C = Crouch',{
-      fontFamily:'Arial Black,sans-serif',fontSize:'17px',color:'#ffffff',
-      stroke:'#000020',strokeThickness:4
+    // Controls hint — moved up above bottom buttons
+    this.add.text(W/2,H*0.84,'SPACE = Jump   |   Hold C = Crouch',{
+      fontFamily:'Arial Black,sans-serif',fontSize:'14px',color:'#aabbcc',
+      stroke:'#000020',strokeThickness:3
     }).setOrigin(0.5)
+
+    // ══ BOTTOM 2 BUTTONS ═══════════════════════════════════════════════════
+    const makeBotBtn=(x,label,icon,color)=>{
+      const ctr=this.add.container(x,H-38)
+      const bg=this.add.graphics()
+      bg.fillStyle(0x000000,0.6);bg.fillRoundedRect(-90,-28,180,52,16)
+      bg.lineStyle(2,color,0.7);bg.strokeRoundedRect(-90,-28,180,52,16)
+      const txt=this.add.text(0,0,icon+'  '+label,{
+        fontFamily:'Arial Black,sans-serif',fontSize:'15px',color:'#ffffff',
+        stroke:'#000000',strokeThickness:3
+      }).setOrigin(0.5)
+      ctr.add([bg,txt])
+      const hit=this.add.rectangle(x,H-38,180,52).setInteractive()
+      hit.on('pointerover',()=>this.tweens.add({targets:ctr,scaleX:1.05,scaleY:1.05,duration:100}))
+      hit.on('pointerout',()=>this.tweens.add({targets:ctr,scaleX:1,scaleY:1,duration:100}))
+      return {ctr,hit}
+    }
+
+    // Play button (left)
+    const playBot=makeBotBtn(W*0.28,'PLAY','▶',0x00aaff)
+    playBot.hit.on('pointerdown',()=>{
+      if(this.selectedChar){
+        SFX.btnStart()
+        this.cameras.main.fadeOut(220,0,0,0)
+        this.time.delayedCall(220,()=>this.scene.start('GameScene',{selectedCharacter:this.selectedChar}))
+      } else {
+        // flash hint to pick a character
+        this.cameras.main.flash(300,255,100,0,false)
+      }
+    })
+
+    // Leaderboard button (right)
+    const lbBot=makeBotBtn(W*0.72,'LEADERBOARD','🏆',0xffaa00)
+    lbBot.hit.on('pointerdown',()=>{
+      SFX.btnClick()
+      showLeaderboardPage(this)
+    })
 
     // Sparkle bottom-right
     const sparkG=this.add.graphics()
@@ -2502,6 +2539,38 @@ class GameScene extends Phaser.Scene {
       if(displayScore>=finalScore) scoreInterval.remove()
     }})
     if(window.FarcadeSDK?.singlePlayer?.actions?.gameOver) window.FarcadeSDK.singlePlayer.actions.gameOver({score:this.score})
+
+    // ── Bottom buttons on game over ──────────────────────────
+    this.time.delayedCall(600, ()=>{
+      const W=this.scale.width, H=this.scale.height
+      const makGOBtn=(x,label,icon,color,cb)=>{
+        const ctr=this.add.container(x,H-38).setAlpha(0)
+        const bg=this.add.graphics()
+        bg.fillStyle(0x000000,0.7);bg.fillRoundedRect(-90,-28,180,52,16)
+        bg.lineStyle(2,color,0.8);bg.strokeRoundedRect(-90,-28,180,52,16)
+        const txt=this.add.text(0,0,icon+'  '+label,{
+          fontFamily:'Arial Black,sans-serif',fontSize:'15px',color:'#ffffff',
+          stroke:'#000000',strokeThickness:3
+        }).setOrigin(0.5)
+        ctr.add([bg,txt])
+        this.tweens.add({targets:ctr,alpha:1,y:H-42,duration:350,ease:'Back.Out'})
+        const hit=this.add.rectangle(x,H-38,180,52).setInteractive()
+        hit.on('pointerover',()=>this.tweens.add({targets:ctr,scaleX:1.05,scaleY:1.05,duration:100}))
+        hit.on('pointerout',()=>this.tweens.add({targets:ctr,scaleX:1,scaleY:1,duration:100}))
+        hit.on('pointerdown',cb)
+      }
+      // Play again
+      makGOBtn(W*0.28,'PLAY AGAIN','▶',0x00aaff,()=>{
+        SFX.btnStart()
+        this.cameras.main.fadeOut(220,0,0,0)
+        this.time.delayedCall(220,()=>this.scene.start('StartScene'))
+      })
+      // Leaderboard
+      makGOBtn(W*0.72,'LEADERBOARD','🏆',0xffaa00,()=>{
+        SFX.btnClick()
+        showLeaderboardPage(this)
+      })
+    })
   }
 
   update(time,delta){
@@ -2936,6 +3005,108 @@ const SFX = {
     if (this._muted) this.stopBG()
     else this.startBG()
     return this._muted
+  }
+}
+
+// ══ LEADERBOARD PAGE ═══════════════════════════════════════════════════════
+function showLeaderboardPage(scene) {
+  // Hide Phaser canvas
+  const canvas = document.querySelector('canvas')
+  if(canvas) canvas.style.display = 'none'
+
+  // Remove existing lb page if any
+  const existing = document.getElementById('lb-page')
+  if(existing) existing.remove()
+
+  const scores = window.W3?.mockScores || [
+    {rank:1, addr:'0xaBc1...9F3d', score:18420},
+    {rank:2, addr:'0x3dEf...1A2b', score:15880},
+    {rank:3, addr:'0x7890...cCdD', score:13200},
+    {rank:4, addr:'0xF123...e456', score:11750},
+    {rank:5, addr:'0x9999...0001', score:9340},
+    {rank:6, addr:'0x1234...5678', score:8100},
+    {rank:7, addr:'0xABCD...EF01', score:6540},
+    {rank:8, addr:'0x9876...5432', score:4320},
+  ]
+
+  const rankColors = ['#fbbf24','#9ca3af','#b45309']
+  const rankEmoji = ['🥇','🥈','🥉']
+
+  const rows = scores.map((s,i)=>`
+    <div style="
+      display:flex; align-items:center; gap:14px;
+      padding:12px 16px; border-radius:12px; margin-bottom:8px;
+      background:rgba(255,255,255,0.04);
+      border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
+    ">
+      <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
+        ${i<3?rankEmoji[i]:'#'+(i+1)}
+      </div>
+      <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
+      <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
+    </div>
+  `).join('')
+
+  const page = document.createElement('div')
+  page.id = 'lb-page'
+  page.style.cssText = `
+    position:fixed;inset:0;z-index:9999;
+    background:linear-gradient(180deg,#040a14 0%,#080f20 50%,#040a14 100%);
+    display:flex;flex-direction:column;align-items:center;
+    font-family:'Syne',sans-serif;overflow-y:auto;padding:24px 16px 100px;
+  `
+  page.innerHTML = `
+    <div style="width:100%;max-width:420px;">
+      <!-- Header -->
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="font-size:36px;margin-bottom:8px;">🏆</div>
+        <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">Leaderboard</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">Top players on Base</div>
+      </div>
+
+      <!-- Scores -->
+      <div style="margin-bottom:24px;">${rows}</div>
+
+      <!-- Mock notice -->
+      <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;margin-bottom:32px;">
+        Live scores coming soon after contract deployment
+      </div>
+    </div>
+
+    <!-- Bottom nav buttons -->
+    <div style="
+      position:fixed;bottom:0;left:0;right:0;
+      display:flex;gap:12px;padding:16px;
+      background:linear-gradient(0deg,rgba(4,10,20,1) 60%,transparent);
+      justify-content:center;
+    ">
+      <button id="lb-play-btn" style="
+        flex:1;max-width:180px;padding:14px;
+        background:linear-gradient(135deg,#1d4ed8,#2563eb);
+        border:none;border-radius:14px;color:#fff;
+        font-family:'Syne',sans-serif;font-size:15px;font-weight:800;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+        box-shadow:0 4px 20px rgba(37,99,235,0.4);
+      ">▶  PLAY</button>
+      <button id="lb-stay-btn" style="
+        flex:1;max-width:180px;padding:14px;
+        background:rgba(255,170,0,0.15);
+        border:2px solid rgba(255,170,0,0.6);border-radius:14px;color:#ffaa00;
+        font-family:'Syne',sans-serif;font-size:15px;font-weight:800;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+      ">🏆  LEADERBOARD</button>
+    </div>
+  `
+  document.body.appendChild(page)
+
+  document.getElementById('lb-play-btn').onclick = ()=>{
+    page.remove()
+    if(canvas) canvas.style.display = ''
+    scene.scene.start('StartScene')
+  }
+  document.getElementById('lb-stay-btn').onclick = ()=>{
+    // already on leaderboard, do nothing / scroll to top
+    page.scrollTo({top:0,behavior:'smooth'})
   }
 }
 
