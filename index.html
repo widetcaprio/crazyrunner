@@ -7,7 +7,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@0.3.0/dist/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@coinbase/wallet-sdk@3.9.3/dist/CoinbaseWalletSDK.min.js"></script>
   <style>
     body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000}
     canvas{display:block}
@@ -921,7 +920,7 @@ console.log('[ASSETS] All generated')
 
     <div style="margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.06); width:100%; display:flex; align-items:center; justify-content:center; gap:6px; opacity:0.5;">
       <span style="font-size:12px; color:#94a3b8;">Built by</span>
-      <span style="font-size:13px; font-weight:700; color:#60a5fa; font-family:'Syne',sans-serif;">@widetcaprio</span>
+      <a href="https://farcaster.xyz/widetcaprio" target="_blank" style="font-size:13px; font-weight:700; color:#60a5fa; font-family:'Syne',sans-serif; text-decoration:none;">@widetcaprio</a>
     </div>
   </div>
 </div>
@@ -1001,32 +1000,17 @@ window.W3 = {
     return true
   },
 
-  // ── Connect via Coinbase Smart Wallet SDK ─────────────────
+  // ── Connect wallet (simple direct) ────────────────────────
   async connectBase() {
     try {
-      const CoinbaseWalletSDK = window.CoinbaseWalletSDK || window.WalletSDK
-      if (!CoinbaseWalletSDK) {
-        // Pure fallback if SDK didn't load
-        if (!window.ethereum) { alert('No wallet found! Please install MetaMask or Coinbase Wallet.'); return false }
-        await window.ethereum.request({ method: 'eth_requestAccounts' })
-        return await this.finalise(window.ethereum)
+      if (!window.ethereum) {
+        alert('No wallet found! Please install MetaMask or Coinbase Wallet extension.')
+        return false
       }
-      const sdk = new CoinbaseWalletSDK({
-        appName: 'Base Runner',
-        appChainIds: [8453],
-      })
-      const provider = sdk.makeWeb3Provider()
-      await provider.request({ method: 'eth_requestAccounts' })
-      return await this.finalise(provider)
+      await window.ethereum.request({ method: 'eth_requestAccounts' })
+      return await this.finalise(window.ethereum)
     } catch(e) {
-      if(e.code === 4001) { alert('Connection rejected — please approve in your wallet.'); return false }
-      // fallback to injected
-      try {
-        if(window.ethereum) {
-          await window.ethereum.request({ method: 'eth_requestAccounts' })
-          return await this.finalise(window.ethereum)
-        }
-      } catch(e2) { this._handleErr(e2) }
+      if(e.code === 4001) { alert('Connection rejected.'); return false }
       this._handleErr(e)
       return false
     }
