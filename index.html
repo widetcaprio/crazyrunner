@@ -3060,34 +3060,29 @@ function showLeaderboardPage(scene) {
   const existing = document.getElementById('lb-page')
   if(existing) existing.remove()
 
-  const scores = window.W3?.mockScores || [
-    {rank:1, addr:'0xaBc1...9F3d', score:18420},
-    {rank:2, addr:'0x3dEf...1A2b', score:15880},
-    {rank:3, addr:'0x7890...cCdD', score:13200},
-    {rank:4, addr:'0xF123...e456', score:11750},
-    {rank:5, addr:'0x9999...0001', score:9340},
-    {rank:6, addr:'0x1234...5678', score:8100},
-    {rank:7, addr:'0xABCD...EF01', score:6540},
-    {rank:8, addr:'0x9876...5432', score:4320},
-  ]
-
   const rankColors = ['#fbbf24','#9ca3af','#b45309']
   const rankEmoji = ['🥇','🥈','🥉']
 
-  const rows = scores.map((s,i)=>`
-    <div style="
-      display:flex; align-items:center; gap:14px;
-      padding:12px 16px; border-radius:12px; margin-bottom:8px;
-      background:rgba(255,255,255,0.04);
-      border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
-    ">
-      <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
-        ${i<3?rankEmoji[i]:'#'+(i+1)}
+  function renderRows(scores) {
+    if(!scores || scores.length === 0) return `
+      <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
+        No scores yet — be the first to play! 🎮
+      </div>`
+    return scores.map((s,i)=>`
+      <div style="
+        display:flex; align-items:center; gap:14px;
+        padding:12px 16px; border-radius:12px; margin-bottom:8px;
+        background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
+      ">
+        <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
+          ${i<3?rankEmoji[i]:'#'+(i+1)}
+        </div>
+        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
+        <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
       </div>
-      <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
-      <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
-    </div>
-  `).join('')
+    `).join('')
+  }
 
   const page = document.createElement('div')
   page.id = 'lb-page'
@@ -3107,11 +3102,15 @@ function showLeaderboardPage(scene) {
       </div>
 
       <!-- Scores -->
-      <div style="margin-bottom:24px;">${rows}</div>
+      <div id="lb-rows" style="margin-bottom:24px;">
+        <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
+          Loading scores from Base... 🔵
+        </div>
+      </div>
 
-      <!-- Mock notice -->
+      <!-- Onchain notice -->
       <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;margin-bottom:32px;">
-        Live scores coming soon after contract deployment
+        🔵 Live scores from Base blockchain
       </div>
     </div>
 
@@ -3140,6 +3139,27 @@ function showLeaderboardPage(scene) {
     </div>
   `
   document.body.appendChild(page)
+
+  // Load real scores from contract
+  ;(async ()=>{
+    const rowsEl = document.getElementById('lb-rows')
+    if(!rowsEl) return
+    try {
+      if(window.W3 && LEADERBOARD_ADDRESS) {
+        const raw = await window.W3.getTopScores()
+        if(raw && raw.length > 0) {
+          const mapped = raw.map(x=>({addr:window.W3.shortAddr(x.player), score:Number(x.score)}))
+          rowsEl.innerHTML = renderRows(mapped)
+        } else {
+          rowsEl.innerHTML = renderRows([])
+        }
+      } else {
+        rowsEl.innerHTML = renderRows([])
+      }
+    } catch(e) {
+      rowsEl.innerHTML = renderRows([])
+    }
+  })()
 
   document.getElementById('lb-play-btn').onclick = ()=>{
     page.remove()
