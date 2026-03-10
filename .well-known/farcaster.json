@@ -1,19 +1,21 @@
 {
-  "accountAssociation": {
-    "header": "",
-    "payload": "",
-    "signature": ""
-  },
-  "miniapp": {
+  "frame": {
+    "name": "Crazy runner",
     "version": "1",
-    "name": "Crazy Runner",
-    "subtitle": "Endless runner on Base blockchain",
-    "description": "Run, dodge, and submit your score onchain! An endless runner Mini App built on Base.",
     "iconUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
-    "splashImageUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
-    "splashBackgroundColor": "#0d1117",
     "homeUrl": "https://crazyrunner.vercel.app",
-    "primaryCategory": "games",
-    "tags": ["game", "runner", "base", "onchain"]
+    "imageUrl": "https://crazyrunner.vercel.app/image.png",
+    "buttonTitle": "Play Now",
+    "splashImageUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
+    "splashBackgroundColor": "#040a14",
+    "webhookUrl": "https://crazyrunner.vercel.app/api/webhook",
+    "subtitle": "Onchain Endless Runner on Base",
+    "description": "Run, dodge, and collect coins across 4 biomes. Submit your score onchain to Base blockchain!",
+    "primaryCategory": "games"
+  },
+  "accountAssociation": {
+    "header": "eyJmaWQiOjEyNTQxNDUsInR5cGUiOiJhdXRoIiwia2V5IjoiMHg2NjkxMTc5QzM0MTMyMTM1NUQ0NURhZTM2ODRBMjQxMjE5QzRmYTIwIn0",
+    "payload": "eyJkb21haW4iOiJjcmF6eXJ1bm5lci52ZXJjZWwuYXBwIn0",
+    "signature": "eCxNUgzrtlRrYIVMTZOxJKf1p968YZYkkMwBvLbOhQ4ll3nj7yKCnGxAO2bmfit1HLc5mTCnvJ3zW+rP9IaeJBs="
   }
 }
