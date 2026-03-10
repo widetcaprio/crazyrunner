@@ -5,19 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Crazy Runner</title>
 
-  <!-- ── Farcaster Frame / Open Graph meta tags ── -->
+  <!-- ── Open Graph meta tags ── -->
   <meta property="og:title" content="Crazy Runner" />
   <meta property="og:description" content="Endless runner on Base blockchain — submit your score onchain!" />
   <meta property="og:image" content="https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png" />
   <meta property="og:url" content="https://crazyrunner.vercel.app" />
+
+  <!-- ── Farcaster Mini App meta tags (NEW) ── -->
+  <meta property="fc:miniapp" content="true" />
+  <meta property="fc:miniapp:version" content="1" />
+  <meta property="fc:miniapp:name" content="Crazy Runner" />
+  <meta property="fc:miniapp:icon_url" content="https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png" />
+  <meta property="fc:miniapp:splash_image_url" content="https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png" />
+  <meta property="fc:miniapp:splash_background_color" content="#0d1117" />
+  <meta property="fc:miniapp:home_url" content="https://crazyrunner.vercel.app" />
+  <!-- Backward compat for older Farcaster clients -->
   <meta property="fc:frame" content="vNext" />
   <meta property="fc:frame:image" content="https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png" />
-  <meta property="fc:frame:image:aspect_ratio" content="1:1" />
-  <meta property="fc:frame:button:1" content="🎮 Play Crazy Runner" />
-  <meta property="fc:frame:button:1:action" content="link" />
-  <meta property="fc:frame:button:1:target" content="https://crazyrunner.vercel.app" />
 
-  <!-- ── Farcaster Mini App SDK (for Warpcast auto-connect) ── -->
+  <!-- ── Farcaster Mini App SDK ── -->
   <script type="module">
     import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk'
     window.__farcasterSdk__ = sdk
@@ -1151,11 +1157,19 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(t) t.innerHTML = loading ? '<span class="w3-spinner"></span>' : 'Connect Wallet'
   }
 
-  // ── Farcaster Mini App SDK: auto-connect when inside Warpcast ───────────────
+  // ── Farcaster Mini App SDK: call ready() FIRST, then auto-connect ─────────
   ;(async () => {
     try {
-      // Use preloaded SDK from <head> or fall back to dynamic import
-      const sdk = window.__farcasterSdk__ || (await import('https://esm.sh/@farcaster/miniapp-sdk')).sdk
+      // Always do a fresh dynamic import — the <head> module sets window.__farcasterSdk__
+      // but we can't rely on timing, so import directly here too
+      const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk')
+
+      // ✅ CRITICAL: call ready() IMMEDIATELY — before any wallet or context work
+      // If this is delayed or skipped, Farcaster shows "Ready not called" splash forever
+      await sdk.actions.ready()
+      console.log('[Farcaster] sdk.actions.ready() called ✅')
+
+      // Now safe to do context / wallet work
       const context = await sdk.context
 
       if (context?.user) {
@@ -1164,16 +1178,16 @@ document.addEventListener('DOMContentLoaded', ()=>{
         // If the Mini App context exposes a wallet provider, use it directly
         if (context?.client?.wallet?.ethProvider || window.ethereum) {
           const provider = context?.client?.wallet?.ethProvider || window.ethereum
-          const connected = await window.W3.finalise(provider)
-          if (connected) {
-            console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
+          try {
+            const connected = await window.W3.finalise(provider)
+            if (connected) {
+              console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
+            }
+          } catch(walletErr) {
+            console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
           }
         }
       }
-
-      // REQUIRED: tell Mini App host the app is ready (removes the splash screen)
-      await sdk.actions.ready()
-      console.log('[Farcaster] sdk.actions.ready() called ✅')
     } catch(e) {
       // Not inside Warpcast, or SDK not available — fail silently
       console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
