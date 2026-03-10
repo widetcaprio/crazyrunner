@@ -1,0 +1,19 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Crazy Runner",
+    "subtitle": "Endless runner on Base blockchain",
+    "description": "Run, dodge, and submit your score onchain! An endless runner Mini App built on Base.",
+    "iconUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
+    "splashImageUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
+    "splashBackgroundColor": "#0d1117",
+    "homeUrl": "https://crazyrunner.vercel.app",
+    "primaryCategory": "games",
+    "tags": ["game", "runner", "base", "onchain"]
+  }
+}
