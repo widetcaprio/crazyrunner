@@ -17,8 +17,11 @@
   <meta property="fc:frame:button:1:action" content="link" />
   <meta property="fc:frame:button:1:target" content="https://crazyrunner.vercel.app" />
 
-  <!-- ── Farcaster Frame SDK (for Warpcast auto-connect) ── -->
-  <script src="https://esm.sh/@farcaster/frame-sdk@0.0.31/dist/browser.js" type="module" crossorigin></script>
+  <!-- ── Farcaster Mini App SDK (for Warpcast auto-connect) ── -->
+  <script type="module">
+    import { sdk } from 'https://esm.sh/@farcaster/miniapp-sdk'
+    window.__farcasterSdk__ = sdk
+  </script>
 
   <script src="https://cdn.jsdelivr.net/npm/@farcade/game-sdk@0.3.0/dist/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
@@ -1148,11 +1151,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(t) t.innerHTML = loading ? '<span class="w3-spinner"></span>' : 'Connect Wallet'
   }
 
-  // ── Farcaster Frame SDK: auto-connect when inside Warpcast ───────────────
+  // ── Farcaster Mini App SDK: auto-connect when inside Warpcast ───────────────
   ;(async () => {
     try {
-      // Dynamically import the SDK (loaded as module in <head>)
-      const { sdk } = await import('https://esm.sh/@farcaster/frame-sdk@0.0.31')
+      // Use preloaded SDK from <head> or fall back to dynamic import
+      const sdk = window.__farcasterSdk__ || (await import('https://esm.sh/@farcaster/miniapp-sdk')).sdk
       const context = await sdk.context
 
       if (context?.user) {
@@ -1168,9 +1171,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
         }
       }
 
-      // REQUIRED: tell Warpcast the app is ready (removes the loading spinner)
+      // REQUIRED: tell Mini App host the app is ready (removes the splash screen)
       await sdk.actions.ready()
-      console.log('[Farcaster] sdk.actions.ready() called')
+      console.log('[Farcaster] sdk.actions.ready() called ✅')
     } catch(e) {
       // Not inside Warpcast, or SDK not available — fail silently
       console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
