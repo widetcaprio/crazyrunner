@@ -1942,9 +1942,6 @@ class GameScene extends Phaser.Scene {
         if(box._arrow)box._arrow.destroy()
         this._activatePowerup(box._type)
         box.destroy()
-
-        if(window.toggleProfile) toggleProfile(false)
-
       }
     })
 
@@ -2099,147 +2096,1028 @@ class GameScene extends Phaser.Scene {
     playAgainHit.on('pointerdown',()=>{ SFX.btnStart(); this._doRestart() })
 
     // ── SUBMIT SCORE TO BASE BUTTON — inside card ─────────────────────────────
-const submitBtnGfx = this.add.graphics()
-const submitBtnTxt = this.add.text(0, 248, '⛓  Save Score to Base', {
-  fontFamily:'Arial Black,sans-serif', fontSize:'17px', color:'#ffffff',
-  stroke:'#001133', strokeThickness:3
-}).setOrigin(0.5, 0.5)
+    const submitBtnGfx = this.add.graphics()
+    const submitBtnTxt = this.add.text(0, 248, '⛓  Save Score to Base', {
+      fontFamily:'Arial Black,sans-serif', fontSize:'17px', color:'#ffffff',
+      stroke:'#001133', strokeThickness:3
+    }).setOrigin(0.5, 0.5)
 
-const drawSubmitBtn = (state) => {
-  submitBtnGfx.clear()
-  const colors = {
-    idle:        [0x0052ff, 0x3b82f6],
-    no_wallet:   [0x555555, 0x888888],
-    submitting:  [0xcc8800, 0xffaa00],
-    done:        [0x16a34a, 0x22c55e],
-    no_contract: [0xcc5500, 0xff8800],
-  }
-  const [fill, border] = colors[state] || colors.idle
-  submitBtnGfx.fillStyle(fill, 1);        submitBtnGfx.fillRoundedRect(-145,232,290,34,17)
-  submitBtnGfx.lineStyle(2, border, 1);   submitBtnGfx.strokeRoundedRect(-145,232,290,34,17)
-  submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
-}
-
-// Initial visual state depends on mode (Warpcast vs normal)
-const isFarcasterModeNow = () => (typeof insideWarpcast !== 'undefined' && insideWarpcast) || !!window.W3?.farcasterProfile || !!farcasterUser
-drawSubmitBtn(window.W3?.connected ? 'idle' : (isFarcasterModeNow() ? 'idle' : 'no_wallet'))
-
-if (!window.W3?.connected && !isFarcasterModeNow()) {
-  submitBtnTxt.setText('🔗  Connect Wallet First')
-  submitBtnTxt.setColor('#aaaaaa')
-} else if (isFarcasterModeNow()) {
-  submitBtnTxt.setText('🧭  Save Score (Warpcast)')
-  submitBtnTxt.setColor('#ffffff')
-}
-
-// Hit area for submit button
-const submitHit = this.add.rectangle(0, 248, 290, 34).setInteractive({useHandCursor:true})
-submitHit.on('pointerdown', async () => {
-  // If running inside Farcaster/Warpcast (no wallet required), save locally (off-chain)
-  const farcasterMode = isFarcasterModeNow()
-
-  if (farcasterMode) {
-    try {
-      saveScoreFarcaster(this.score)
-      submitBtnTxt.setText('✅  Saved (Warpcast)')
-      drawSubmitBtn('done')
-      submitHit.disableInteractive()
-    } catch (err) {
-      console.error('Farcaster save failed', err)
-      submitBtnTxt.setText('❌  Save failed')
-      drawSubmitBtn('no_wallet')
+    const drawSubmitBtn = (state) => {
+      submitBtnGfx.clear()
+      const colors = {
+        idle:        [0x0052ff, 0x3b82f6],
+        no_wallet:   [0x555555, 0x888888],
+        submitting:  [0xcc8800, 0xffaa00],
+        done:        [0x16a34a, 0x22c55e],
+        no_contract: [0xcc5500, 0xff8800],
+      }
+      const [fill, border] = colors[state] || colors.idle
+      submitBtnGfx.fillStyle(fill, 1);        submitBtnGfx.fillRoundedRect(-145,232,290,34,17)
+      submitBtnGfx.lineStyle(2, border, 1);   submitBtnGfx.strokeRoundedRect(-145,232,290,34,17)
+      submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
     }
-    return
+    drawSubmitBtn(window.W3.connected ? 'idle' : 'no_wallet')
+
+    if (!window.W3.connected) {
+      submitBtnTxt.setText('🔗  Connect Wallet First')
+      submitBtnTxt.setColor('#aaaaaa')
+    }
+
+    // Hit area for submit button
+    const submitHit = this.add.rectangle(0, 248, 290, 34).setInteractive({useHandCursor:true})
+    submitHit.on('pointerdown', async () => {
+      if (!window.W3.connected) {
+        // Try to connect now
+        submitBtnTxt.setText('⏳  Connecting wallet...')
+        drawSubmitBtn('submitting')
+        const ok = await window.W3.connect()
+        if (!ok) {
+          submitBtnTxt.setText('❌  Connection failed')
+          drawSubmitBtn('no_wallet')
+          return
+        }
+      }
+      submitBtnTxt.setText('⏳  Submitting to Base...')
+      drawSubmitBtn('submitting')
+      const txHash = await window.W3.submitScore(this.score)
+      if (txHash) {
+        submitBtnTxt.setText('✅  Score saved on Base!')
+        drawSubmitBtn('done')
+        submitHit.disableInteractive()
+      } else if (!LEADERBOARD_ADDRESS) {
+        submitBtnTxt.setText('⚠️  Deploy contract first')
+        drawSubmitBtn('no_contract')
+      } else {
+        submitBtnTxt.setText('❌  Failed — try again')
+        drawSubmitBtn('idle')
+      }
+    })
+
+    this.centerMessage.add([goOverlay,goCard,goDivTop,goDivMid,goDivBtn,goBtn,
+      this.msgTitle,this.msgScoreLabel,this.msgRoast,this.msgScore,
+      this.msgCoins,this.msgTotal,this.restartHint,playAgainHit,
+      submitBtnGfx, submitBtnTxt, submitHit])
+
+    this.tweens.add({targets:[goBtn,this.restartHint],alpha:{from:1,to:0.75},duration:700,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+    this.tweens.add({targets:this.msgTitle,scaleX:{from:1,to:1.03},scaleY:{from:1,to:1.03},duration:950,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+
+    this.spaceKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
+    this.cKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C)
+    this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
+
+    this.score=0;this.sessionCoins=0;this.isGameOver=false;this.isCrouching=false;this.isJumping=false;this._onBoat=false
+    this.runTimeMs=0;this.currentSpeed=GameSettings.gameplay.baseSpeed
+    this.nextSpawnAt=0;this.nextCoinAt=0
+    this._biomeIdx=0;this._biomeTimer=0;this._transitioning=false
+    this._updateBiomeLabel()
   }
 
-  // Otherwise fallback to original wallet -> Base on-chain flow
-  if (!window.W3.connected) {
-    // Try to connect now
-    submitBtnTxt.setText('⏳  Connecting wallet...')
-    drawSubmitBtn('submitting')
-    const ok = await window.W3.connect()
-    if (!ok) {
-      submitBtnTxt.setText('❌  Connection failed')
-      drawSubmitBtn('no_wallet')
+  _drawGround(biome){
+    const W=this.scale.width,H=this.scale.height,groundY=this._groundY,GH=GameSettings.gameplay.groundHeight
+    const g=this._groundGfx;g.clear()
+    // Ground fill
+    g.fillStyle(biome.groundFillColor,1);g.fillRect(0,groundY,W,GH)
+    // Ground top line
+    g.fillStyle(biome.groundTopColor,1);g.fillRect(0,groundY,W,8)
+    // Ground edge glow line
+    g.lineStyle(3,biome.groundLineColor,1);g.lineBetween(0,groundY,W,groundY)
+  }
+
+  _updateBiomeLabel(){
+    if(!this.biomeLabel) return
+    const icons=['🌿','🌊','🏜️','❄️']
+    const icon=icons[this._biomeIdx]||'🌍'
+    // Just update text — pill is fixed size and always centered via setOrigin(0.5,0.5)
+    this.biomeLabel.setText(icon+' '+BIOMES[this._biomeIdx].name)
+  }
+
+  _switchBiome(){
+    if(this._transitioning||this.isGameOver) return
+    this._transitioning=true
+    const W=this.scale.width,H=this.scale.height
+    const nextIdx=(this._biomeIdx+1)%BIOMES.length
+    const nextBiome=BIOMES[nextIdx]
+
+    // Fade overlay in
+    this.tweens.add({
+      targets:this._overlayRect,
+      fillAlpha:1,
+      duration:600,
+      ease:'Power2',
+      onComplete:()=>{
+        // Swap BG
+        this._bgImage.setTexture(nextBiome.bgKey)
+        // Swap parallax layers
+        const bid=nextBiome.id
+        this._parFar.setTexture('par_'+bid+'_far')
+        this._parMid.setTexture('par_'+bid+'_mid')
+        this._parScrollFar=0; this._parScrollMid=0
+        this._drawGround(nextBiome)
+        this._biomeIdx=nextIdx
+        this._biomeTimer=0
+        this._updateBiomeLabel()
+        // Show/hide boat
+        if(nextBiome.hasBoat){
+          this._boat.setVisible(true)
+          this._boat.setDepth(3)
+          this._onBoat=true
+        } else {
+          this._boat.setVisible(false)
+          this._onBoat=false
+          // Restore full player sprite when leaving ocean
+          this.player.setCrop(0,0,this.player.width,this.player.height)
+        }
+        // Fade overlay out
+        this.tweens.add({
+          targets:this._overlayRect,
+          fillAlpha:0,
+          duration:600,
+          ease:'Power2',
+          onComplete:()=>{ this._transitioning=false }
+        })
+      }
+    })
+  }
+
+  _showCoinPop(x,y){
+    const p=this.add.text(x,y-10,'B+1',{fontFamily:'Arial Black,sans-serif',fontSize:'28px',color:'#58a6ff',stroke:'#000',strokeThickness:3}).setOrigin(0.5).setDepth(80)
+    this.tweens.add({targets:p,y:y-70,alpha:0,scaleX:1.4,scaleY:1.4,duration:600,ease:'Power2',onComplete:()=>p.destroy()})
+  }
+
+  _tryJump(){
+    if(!this.player?.body) return
+    // Only jump if truly on ground AND not already jumping
+    if(this.player.body.blocked.down && !this.isJumping){
+      this.isJumping=true; this.isCrouching=false
+      this._applyStandSize()
+      this.player.setVelocityY(-GameSettings.gameplay.jumpVelocityY)
+      SFX.jump()
+      this.player.stop()
+      this.player.play(this._jumpKey)
+      this.tweens.add({targets:this.player,scaleY:1.15,scaleX:0.88,duration:60,yoyo:true})
+    }
+  }
+
+  _applyCrouchSize(){
+    const pW=this._pW,pH=this._pH
+    const crouchH=pH*0.55
+    this.player.setDisplaySize(pW,crouchH)
+    // ── CROUCH FIX ──────────────────────────────────────────────────────────────
+    // Keep body at BOTTOM of sprite by setting offset so hitbox bottom = sprite bottom
+    // offset.y = fullHeight - crouchHeight (pushes hitbox down to feet)
+    this.player.body.setSize(pW*0.45,crouchH*0.9)
+    this.player.body.setOffset((pW-pW*0.45)/2, pH-crouchH)
+  }
+
+  _applyStandSize(){
+    const pW=this._pW,pH=this._pH
+    this.player.setDisplaySize(pW,pH)
+    this.player.body.setSize(pW*0.45,pH)
+    this.player.body.setOffset((pW-pW*0.45)/2,0)
+  }
+
+  _startCrouch(){
+    if(this.isGameOver||this.isJumping||this.isCrouching) return
+    this.isCrouching=true;this._applyCrouchSize()
+    this.player.play(this._crouchKey)
+  }
+
+  _standUp(){
+    if(!this.isCrouching) return
+    this.isCrouching=false;this._applyStandSize()
+    this.player.play(this._runKey)
+  }
+
+  _doRestart(){
+    SFX.stopBG()
+    this.cameras.main.fadeOut(200,0,0,0)
+    this.time.delayedCall(200,()=>this.scene.restart({lastScore:this.score,selectedCharacter:this.selectedCharacter}))
+  }
+
+  _activatePowerup(type){
+    this._powerupActive=type
+    this._powerupTimer=8000
+    this._powerupHUD.setVisible(true)
+    SFX.powerupCollect(type)
+    if(type==='magnet'){
+      this._powerupIcon.setText('🧲')
+      this._powerupLabel.setText('MAGNET - 8s')
+      this._magnetSprite.setVisible(true)
+      // Magnet pull particles
+      this._showPowerupBanner('🧲 MAGNET!','#00e5ff')
+    } else if(type==='shield'){
+      this._shielded=true
+      this._powerupIcon.setText('🛡️')
+      this._powerupLabel.setText('SHIELD - 8s')
+      this._showPowerupBanner('🛡️ INVINCIBLE!','#ffcc02')
+      // Start blinking
+      this._shieldBlink=this.tweens.add({targets:this.player,alpha:{from:1,to:0.2},duration:120,yoyo:true,repeat:-1})
+      // Shield glow ring
+      this._shieldGlow=this.add.graphics().setDepth(4)
+    }
+  }
+
+  _deactivatePowerup(){
+    const prev=this._powerupActive
+    this._powerupActive=null
+    this._shielded=false
+    SFX.powerupExpire()
+    this._powerupTimer=0
+    this._hudPulsing=false
+    this.tweens.killTweensOf(this._powerupHUD)
+    this._powerupHUD.setScale(1)
+    this._powerupHUD.setVisible(false)
+    this._magnetSprite.setVisible(false)
+    if(this._shieldBlink){this._shieldBlink.stop();this._shieldBlink=null}
+    if(this._shieldGlow){this._shieldGlow.destroy();this._shieldGlow=null}
+    this.player.setAlpha(1)
+    // Flash out
+    this._showPowerupBanner(prev==='magnet'?'🧲 Magnet ended':'🛡️ Shield ended','#666666',800)
+  }
+
+  _showPowerupBanner(text,color,dur=1400){
+    const W=this.scale.width
+    const t=this.add.text(W/2,200,text,{
+      fontFamily:'Arial Black,sans-serif',fontSize:'36px',color,
+      stroke:'#000000',strokeThickness:4,
+      shadow:{offsetX:0,offsetY:4,color:'#000',blur:8,fill:true}
+    }).setOrigin(0.5).setDepth(90)
+    this.tweens.add({targets:t,y:150,alpha:{from:1,to:0},duration:dur,ease:'Power2',onComplete:()=>t.destroy()})
+  }
+
+  _spawnPowerup(){
+    const W=this.scale.width,groundY=this._groundY
+
+    // ── SAFE SPAWN: ensure no obstacles are within 350px of spawn zone ────────
+    const spawnX=W+80
+    // Only block if obstacle is right at the spawn edge (within 200px)
+    const hasObstacleNearby=this.obstacles.getChildren().some(o=>o.active && o.x>W-150)
+    if(hasObstacleNearby){
+      this._nextPowerupAt=this.time.now+1500
       return
     }
-  }
 
-  // Submit to Base
-  submitBtnTxt.setText('⏳  Submitting to Base...')
-  drawSubmitBtn('submitting')
+    const type=Math.random()<0.5?'magnet':'shield'
+    const tex=type==='magnet'?'tex_box_magnet':'tex_box_shield'
+    const glowColor=type==='magnet'?0x00e5ff:0xffcc02
+    const labelText=type==='magnet'?'🧲 MAGNET':'🛡️ SHIELD'
+    const labelColor=type==='magnet'?'#00e5ff':'#ffcc02'
 
-  try {
-    const txHash = await window.W3.submitScore(this.score)
-    if (txHash) {
-      submitBtnTxt.setText('✅  Score saved on Base!')
-      drawSubmitBtn('done')
-      submitHit.disableInteractive()
-    } else if (!LEADERBOARD_ADDRESS) {
-      submitBtnTxt.setText('⚠️  Deploy contract first')
-      drawSubmitBtn('no_contract')
-    } else {
-      submitBtnTxt.setText('❌  Failed — try again')
-      drawSubmitBtn('idle')
+    // Spawn at a comfortable height — easy to run through  
+    // Alternate between ground level and mid-air (jump height)
+    const spawnOnGround=Math.random()<0.6  // 60% on ground, 40% mid-air (easier to grab mid-jump)
+    const boxY=spawnOnGround ? groundY-10 : groundY-180
+
+    const box=this.powerupGroup.create(spawnX, boxY, tex)
+    box.setOrigin(0.5,1).setDisplaySize(56,56).setDepth(6)
+    box._type=type; box._collected=false
+    box.body.allowGravity=false
+    box.setVelocityX(-this.currentSpeed)
+
+    // Satisfying bounce animation
+    const bounceY=spawnOnGround ? boxY-30 : boxY-20
+    this.tweens.add({targets:box,y:bounceY,duration:450,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+    this.tweens.add({targets:box,angle:8,duration:350,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+
+    // Pulsing glow ring that follows the box
+    const glow=this.add.graphics().setDepth(5)
+    const drawGlow=()=>{
+      glow.clear()
+      glow.lineStyle(4,glowColor,0.7);glow.strokeCircle(0,0,36)
+      glow.lineStyle(2,0xffffff,0.3);glow.strokeCircle(0,0,28)
     }
-  } catch (err) {
-    console.error('Submit score error', err)
-    submitBtnTxt.setText('❌  Failed — try again')
-    drawSubmitBtn('idle')
-  }
-})
+    drawGlow()
+    glow.x=spawnX; glow.y=boxY-28
+    this.tweens.add({targets:glow,scaleX:1.4,scaleY:1.4,alpha:0,duration:600,repeat:-1})
+    box._glow=glow
 
-this.centerMessage.add([goOverlay,goCard,goDivTop,goDivMid,goDivBtn,goBtn,
-  this.msgTitle,this.msgScoreLabel,this.msgRoast,this.msgScore,
-  this.msgCoins,this.msgTotal,this.restartHint,playAgainHit,
-  submitBtnGfx, submitBtnTxt, submitHit])
+    // Floating label above box
+    const lbl=this.add.text(spawnX, boxY-72, labelText,{
+      fontFamily:'Arial Black,sans-serif',fontSize:'17px',
+      color:labelColor, stroke:'#000000',strokeThickness:3
+    }).setOrigin(0.5).setDepth(6)
+    box._lbl=lbl
+    this.tweens.add({targets:lbl,y:boxY-82,duration:500,yoyo:true,repeat:-1,ease:'Sine.InOut'})
 
-this.tweens.add({targets:[goBtn,this.restartHint],alpha:{from:1,to:0.75},duration:700,yoyo:true,repeat:-1,ease:'Sine.InOut'})
-this.tweens.add({targets:this.msgTitle,scaleX:{from:1,to:1.03},scaleY:{from:1,to:1.03},duration:950,yoyo:true,repeat:-1,ease:'Sine.InOut'})
-
-this.spaceKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
-this.cKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C)
-this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
-
-this.score=0;this.sessionCoins=0;this.isGameOver=false;this.isCrouching=false;this.isJumping=false;this._onBoat=false
-this.runTimeMs=0;this.currentSpeed=GameSettings.gameplay.baseSpeed
-this.nextSpawnAt=0;this.nextCoinAt=0
-this._biomeIdx=0;this._biomeTimer=0;this._transitioning=false
-this._updateBiomeLabel()
-
-// ── Farcaster / Off-chain helpers ──────────────────────────────────────────
-
-function saveScoreFarcaster(score) {
-  // Save a raw off-chain score tied to the Farcaster profile (localStorage for now)
-  // If you want server-side shared leaderboard later, swap this for a POST to your API.
-  const fc = farcasterUser || window.W3?.farcasterProfile || null
-  const key = 'crazyrunner_fc_scores'
-  if (!fc) throw new Error('No Farcaster profile available')
-
-  const entry = {
-    fid: fc.fid ?? null,
-    username: fc.username ?? null,
-    displayName: fc.displayName ?? null,
-    pfpUrl: fc.pfpUrl ?? null,
-    score: Number(score) || 0,
-    ts: Date.now()
+    // Arrow pointing at box so player can't miss it
+    const arrow=this.add.text(spawnX, boxY-110,'▼',{
+      fontFamily:'Arial Black,sans-serif',fontSize:'22px',color:labelColor
+    }).setOrigin(0.5).setDepth(6)
+    this.tweens.add({targets:arrow,y:boxY-100,duration:300,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+    this.tweens.add({targets:arrow,alpha:0.3,duration:400,yoyo:true,repeat:-1})
+    box._arrow=arrow
   }
 
-  const list = JSON.parse(localStorage.getItem(key) || '[]')
-  list.push(entry)
-  // Keep only latest 500 entries to avoid storage bloat
-  while (list.length > 500) list.shift()
-  localStorage.setItem(key, JSON.stringify(list))
+  _scheduleNextPowerup(){
+    // Powerup every 18-30 seconds
+    this._nextPowerupAt=this.time.now+Phaser.Math.Between(18000,30000)
+  }
+
+  _scheduleNextSpawn(nowMs){
+    const t=Phaser.Math.Clamp((this.currentSpeed-GameSettings.gameplay.baseSpeed)/(GameSettings.gameplay.maxSpeed-GameSettings.gameplay.baseSpeed),0,1)
+    const maxI=Phaser.Math.Linear(GameSettings.gameplay.spawnIntervalMsMax,GameSettings.gameplay.spawnIntervalMsMax*0.65,t)
+    const minI=Phaser.Math.Linear(GameSettings.gameplay.spawnIntervalMsMin,GameSettings.gameplay.spawnIntervalMsMin*0.6,t)
+    this.nextSpawnAt=nowMs+Phaser.Math.Between(Math.floor(minI),Math.floor(maxI))
+  }
+  _scheduleNextCoin(nowMs){this.nextCoinAt=nowMs+Phaser.Math.Between(1500,3200)}
+
+  _spawnObstacle(){
+    const W=this.scale.width,groundY=this._groundY,pH=this._pH
+    if(this.isJumping){this.nextSpawnAt=this.time.now+500;return}
+    const biome=BIOMES[this._biomeIdx]
+    const r=Math.random();let obs
+
+    if(r<0.65){
+      // GROUND obstacle — player jumps over
+      const pool=biome.obsGround||['tex_rock','tex_spike','tex_boulder']
+      const szPool=biome.obsGroundSz||[[60,68],[80,68],[70,70]]
+      const i=Math.floor(Math.random()*pool.length)
+      obs=this.obstacles.create(W+60,groundY,pool[i])
+      obs.setOrigin(0.5,1);obs.body.setSize(szPool[i][0],szPool[i][1],true)
+      if(pool[i]==='tex_boulder') this.tweens.add({targets:obs,angle:360,duration:600,repeat:-1,ease:'Linear'})
+      if(pool[i]==='tex_firepillar') this.tweens.add({targets:obs,scaleY:{from:1,to:0.88},duration:130,yoyo:true,repeat:-1})
+      if(pool[i]==='tex_iceshard') this.tweens.add({targets:obs,alpha:{from:1,to:0.75},duration:200,yoyo:true,repeat:-1})
+    } else {
+      // AIR obstacle — player crouches under
+      const airTex=biome.obsAir||'tex_lowbar'
+      const airW=biome.obsAirW||160, airH=biome.obsAirH||40
+
+      if(biome.obsAirVertical){
+        // Vertical wall sitting on ground — hitbox only covers top part above crouch height
+        // Player crouches (pH*0.58 tall) and passes through the gap at the base
+        const crouchH=Math.round(pH*0.58)
+        const hitH=Math.max(8, airH-crouchH)
+        obs=this.obstacles.create(W+40,groundY-airH,airTex)
+        obs.setOrigin(0,0)
+        obs.body.setSize(airW,hitH);obs.body.setOffset(0,0)
+        if(airTex==='tex_blizzard') this.tweens.add({targets:obs,x:'+=6',duration:90,yoyo:true,repeat:-1})
+        if(airTex==='tex_wave') this.tweens.add({targets:obs,y:`-=4`,duration:600,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+      } else if(airTex==='tex_lavabeam'){
+        const barY=groundY-Math.round(pH*0.72)
+        obs=this.obstacles.create(W+80,barY,airTex);obs.setOrigin(0,0.5)
+        obs.body.setSize(airW-4,14);obs.body.setOffset(2,11)
+        this.tweens.add({targets:obs,alpha:{from:0.8,to:1},duration:70,yoyo:true,repeat:-1})
+      } else {
+        // Forest: generic laser bar or saw
+        if(r<0.82){
+          const barY=groundY-Math.round(pH*0.72)
+          obs=this.obstacles.create(W+80,barY,'tex_lowbar');obs.setOrigin(0,0.5)
+          obs.body.setSize(154,14);obs.body.setOffset(3,13)
+          this.tweens.add({targets:obs,alpha:{from:0.75,to:1},duration:80,yoyo:true,repeat:-1})
+        } else {
+          const sawY=groundY-Math.round(pH*0.72)
+          obs=this.obstacles.create(W+60,sawY,'tex_saw');obs.setOrigin(0.5,0.5)
+          obs.body.setSize(46,46);obs.body.setOffset(11,11)
+          this.tweens.add({targets:obs,angle:360,duration:500,repeat:-1,ease:'Linear'})
+        }
+      }
+    }
+    obs.setVelocityX(-this.currentSpeed);obs.setImmovable(true);obs.body.allowGravity=false
+    obs.setDepth(4)
+  }
+
+  _spawnCoin(){
+    const W=this.scale.width,groundY=this._groundY
+    const spawnStartX=W+100
+
+    // Categorise active obstacles
+    const activeObs=this.obstacles.getChildren().filter(o=>o.active)
+    // Ground obstacles: rocks, spikes, boulders — sit at groundY
+    const groundObs=activeObs.filter(o=>o.y>=groundY-20)
+    // Air obstacles: laser bar, saw — float above ground
+    const airObs=activeObs.filter(o=>o.y<groundY-20)
+
+    // Only block spawn if a ground obstacle is near the right edge
+    const groundObsNearEdge=groundObs.some(o=>o.x>W-180)
+    if(groundObsNearEdge){this.nextCoinAt=this.time.now+600;return}
+
+    const zone=Math.random()
+
+    if(zone<0.35){
+      // ── GROUND COINS (35%): clear flat stretch, run through them ────────────
+      for(let i=0;i<4;i++){
+        const coin=this.coinGroup.create(spawnStartX+i*54,this._groundY-15,'tex_coin_real')
+        coin.setOrigin(0.5,0.5).setDisplaySize(36,36).setDepth(4)
+        coin.body.allowGravity=false
+        coin.body.setSize(36,36);coin.body.setOffset(0,0)
+        coin._groundCoin=true
+        coin.setVelocityX(-this.currentSpeed)
+        this.tweens.add({targets:coin,scaleX:0.2,duration:800,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+      }
+
+    } else if(zone<0.65){
+      // ── CROUCH COINS (30%): ground level, player crouches to collect ─────────
+      for(let i=0;i<5;i++){
+        const coin=this.coinGroup.create(spawnStartX+i*60,this._groundY-15,'tex_coin_real')
+        coin.setOrigin(0.5,0.5).setDisplaySize(36,36).setDepth(4)
+        coin.body.allowGravity=false
+        coin.body.setSize(36,36);coin.body.setOffset(0,0)
+        coin._groundCoin=true
+        coin.setVelocityX(-this.currentSpeed)
+        this.tweens.add({targets:coin,scaleX:0.2,duration:800,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+      }
+
+    } else {
+      // ── JUMP ARC COINS (35%): floating above obstacle height — perfect as-is ─
+      const baseY=groundY-160
+      const arcCoins=5
+      for(let i=0;i<arcCoins;i++){
+        const t=i/(arcCoins-1)
+        const arcX=spawnStartX+i*54
+        const arcY=baseY-Math.sin(t*Math.PI)*60
+        const coin=this.coinGroup.create(arcX,arcY,'tex_coin_real')
+        coin.setOrigin(0.5).setDisplaySize(44,44).setDepth(4)
+        coin.body.allowGravity=false
+        coin.setVelocityX(-this.currentSpeed)
+        this.tweens.add({targets:coin,y:arcY-10,duration:380+i*25,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+        this.tweens.add({targets:coin,scaleX:0.25,duration:850,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+      }
+    }
+  }
+
+    _scheduleNextCoin(nowMs){this.nextCoinAt=nowMs+Phaser.Math.Between(1500,3200)}
+
+  _spawnObstacle(){
+    const W=this.scale.width,groundY=this._groundY,pH=this._pH
+    if(this.isJumping){this.nextSpawnAt=this.time.now+500;return}
+    const biome=BIOMES[this._biomeIdx]
+    const r=Math.random();let obs
+
+    if(r<0.65){
+      // GROUND obstacle — player jumps over
+      const pool=biome.obsGround||['tex_rock','tex_spike','tex_boulder']
+      const szPool=biome.obsGroundSz||[[60,68],[80,68],[70,70]]
+      const i=Math.floor(Math.random()*pool.length)
+      obs=this.obstacles.create(W+60,groundY,pool[i])
+      obs.setOrigin(0.5,1);obs.body.setSize(szPool[i][0],szPool[i][1],true)
+      if(pool[i]==='tex_boulder') this.tweens.add({targets:obs,angle:360,duration:600,repeat:-1,ease:'Linear'})
+      if(pool[i]==='tex_firepillar') this.tweens.add({targets:obs,scaleY:{from:1,to:0.88},duration:130,yoyo:true,repeat:-1})
+      if(pool[i]==='tex_iceshard') this.tweens.add({targets:obs,alpha:{from:1,to:0.75},duration:200,yoyo:true,repeat:-1})
+    } else {
+      // AIR obstacle — player crouches under
+      const airTex=biome.obsAir||'tex_lowbar'
+      const airW=biome.obsAirW||160, airH=biome.obsAirH||40
+
+      if(biome.obsAirVertical){
+        // Vertical wall sitting on ground — hitbox only covers top part above crouch height
+        // Player crouches (pH*0.58 tall) and passes through the gap at the base
+        const crouchH=Math.round(pH*0.58)
+        const hitH=Math.max(8, airH-crouchH)
+        obs=this.obstacles.create(W+40,groundY-airH,airTex)
+        obs.setOrigin(0,0)
+        obs.body.setSize(airW,hitH);obs.body.setOffset(0,0)
+        if(airTex==='tex_blizzard') this.tweens.add({targets:obs,x:'+=6',duration:90,yoyo:true,repeat:-1})
+        if(airTex==='tex_wave') this.tweens.add({targets:obs,y:`-=4`,duration:600,yoyo:true,repeat:-1,ease:'Sine.InOut'})
+      } else if(airTex==='tex_lavabeam'){
+        const barY=groundY-Math.round(pH*0.72)
+        obs=this.obstacles.create(W+80,barY,airTex);obs.setOrigin(0,0.5)
+        obs.body.setSize(airW-4,14);obs.body.setOffset(2,11)
+        this.tweens.add({targets:obs,alpha:{from:0.8,to:1},duration:70,yoyo:true,repeat:-1})
+      } else {
+        // Forest: generic laser bar or saw
+        if(r<0.82){
+          const barY=groundY-Math.round(pH*0.72)
+          obs=this.obstacles.create(W+80,barY,'tex_lowbar');obs.setOrigin(0,0.5)
+          obs.body.setSize(154,14);obs.body.setOffset(3,13)
+          this.tweens.add({targets:obs,alpha:{from:0.75,to:1},duration:80,yoyo:true,repeat:-1})
+        } else {
+          const sawY=groundY-Math.round(pH*0.72)
+          obs=this.obstacles.create(W+60,sawY,'tex_saw');obs.setOrigin(0.5,0.5)
+          obs.body.setSize(46,46);obs.body.setOffset(11,11)
+          this.tweens.add({targets:obs,angle:360,duration:500,repeat:-1,ease:'Linear'})
+        }
+      }
+    }
+    obs.setVelocityX(-this.currentSpeed);obs.setImmovable(true);obs.body.allowGravity=false
+    obs.setDepth(4)
+  }
+
+
+  _handleGameOver(){
+    if(this.isGameOver) return
+    this.isGameOver=true
+    SFX.impactThud()
+    this.time.delayedCall(200, ()=>SFX.gameOver())
+    this.player.stop();this.player.setTint(0xff4444)
+    this.player.setVelocity(0,0);this.player.body.enable=false
+    this.obstacles.getChildren().forEach(o=>{o.setVelocityX(0);if(o.body)o.body.enable=false})
+    this.coinGroup.getChildren().forEach(c=>{if(c.body)c.body.enable=false})
+    CoinStore.add(this.sessionCoins)
+    this.cameras.main.shake(350,0.018)
+    const roast=window.FUNNY_MSGS[Math.floor(Math.random()*window.FUNNY_MSGS.length)]
+    this.msgRoast.setText(roast)
+    this.msgScore.setText('0')
+    this.msgCoins.setText('🪙  +'+this.sessionCoins+' coins earned')
+    this.msgTotal.setText('All-time total: '+CoinStore.get()+' B Coins')
+    this.centerMessage.setVisible(true)
+    this.tweens.add({targets:this.centerMessage,scaleX:{from:0.5,to:1},scaleY:{from:0.5,to:1},alpha:{from:0,to:1},duration:350,ease:'Back.Out'})
+    // Count score up from 0
+    const finalScore=this.score
+    let displayScore=0
+    const scoreStep=Math.max(1,Math.ceil(finalScore/40))
+    const scoreInterval=this.time.addEvent({delay:30,repeat:40,callback:()=>{
+      displayScore=Math.min(finalScore,displayScore+scoreStep)
+      this.msgScore.setText(String(displayScore))
+      if(displayScore>=finalScore) scoreInterval.remove()
+    }})
+    if(window.FarcadeSDK?.singlePlayer?.actions?.gameOver) window.FarcadeSDK.singlePlayer.actions.gameOver({score:this.score})
+
+    // ── Bottom 2 buttons — full width, appear after game over ──
+    this.time.delayedCall(600, ()=>{
+      const W=this.scale.width, H=this.scale.height
+      const btnH = 64
+      const btnY = H - btnH/2  // flush to bottom
+
+      // HOME button (left half)
+      const homeBg = this.add.graphics()
+      homeBg.fillStyle(0x1a3a6b,1)
+      homeBg.fillRect(0, H-btnH, W/2, btnH)
+      homeBg.fillStyle(0x2563eb,1)
+      homeBg.fillRect(0, H-btnH, W/2, 3) // top accent line
+      const homeTxt = this.add.text(W/4, H-btnH/2, '🏠  HOME',{
+        fontFamily:'Arial Black,sans-serif',fontSize:'18px',color:'#ffffff',
+        stroke:'#0a1a3d',strokeThickness:3
+      }).setOrigin(0.5).setDepth(200)
+      homeBg.setDepth(199)
+
+      const homeHit = this.add.rectangle(W/4, H-btnH/2, W/2, btnH).setInteractive({useHandCursor:true}).setDepth(201)
+      homeHit.on('pointerover',()=>{ homeBg.clear(); homeBg.fillStyle(0x2563eb,1); homeBg.fillRect(0,H-btnH,W/2,btnH); homeBg.fillStyle(0x60a5fa,1); homeBg.fillRect(0,H-btnH,W/2,3) })
+      homeHit.on('pointerout',()=>{ homeBg.clear(); homeBg.fillStyle(0x1a3a6b,1); homeBg.fillRect(0,H-btnH,W/2,btnH); homeBg.fillStyle(0x2563eb,1); homeBg.fillRect(0,H-btnH,W/2,3) })
+      homeHit.on('pointerdown',()=>{
+        SFX.btnClick()
+        this.cameras.main.fadeOut(220,0,0,0)
+        this.time.delayedCall(220,()=>this.scene.start('StartScene'))
+      })
+
+      // Divider line between buttons
+      const div = this.add.graphics().setDepth(200)
+      div.lineStyle(2, 0x334466, 1)
+      div.lineBetween(W/2, H-btnH, W/2, H)
+
+      // LEADERBOARD button (right half)
+      const lbBg = this.add.graphics()
+      lbBg.fillStyle(0x3a2800,1)
+      lbBg.fillRect(W/2, H-btnH, W/2, btnH)
+      lbBg.fillStyle(0xffaa00,1)
+      lbBg.fillRect(W/2, H-btnH, W/2, 3) // top accent line
+      const lbTxt = this.add.text(W*0.75, H-btnH/2, '🏆  LEADERBOARD',{
+        fontFamily:'Arial Black,sans-serif',fontSize:'16px',color:'#ffcc44',
+        stroke:'#1a0800',strokeThickness:3
+      }).setOrigin(0.5).setDepth(200)
+      lbBg.setDepth(199)
+
+      const lbHit = this.add.rectangle(W*0.75, H-btnH/2, W/2, btnH).setInteractive({useHandCursor:true}).setDepth(201)
+      lbHit.on('pointerover',()=>{ lbBg.clear(); lbBg.fillStyle(0xffaa00,0.25); lbBg.fillRect(W/2,H-btnH,W/2,btnH); lbBg.fillStyle(0xffcc00,1); lbBg.fillRect(W/2,H-btnH,W/2,3) })
+      lbHit.on('pointerout',()=>{ lbBg.clear(); lbBg.fillStyle(0x3a2800,1); lbBg.fillRect(W/2,H-btnH,W/2,btnH); lbBg.fillStyle(0xffaa00,1); lbBg.fillRect(W/2,H-btnH,W/2,3) })
+      lbHit.on('pointerdown',()=>{
+        SFX.btnClick()
+        showLeaderboardPage(this)
+      })
+
+      // Fade in both buttons
+      ;[homeBg, homeTxt, lbBg, lbTxt, div].forEach(o=>{
+        o.setAlpha(0)
+        this.tweens.add({targets:o,alpha:1,duration:300,ease:'Sine.Out'})
+      })
+    })
+  }
+
+  update(time,delta){
+    if(this.isGameOver) return  // no spacebar/click restart — use buttons only
+    if(Phaser.Input.Keyboard.JustDown(this.spaceKey))this._tryJump()
+    if(this.player?.body?.blocked.down){
+      if(this.isJumping){
+        this.isJumping=false
+        SFX.land()
+        if(!this.isCrouching){
+          if(this.player.anims.currentAnim?.key !== this._runKey) this.player.play(this._runKey)
+        } else {
+          if(this.player.anims.currentAnim?.key !== this._crouchKey) this.player.play(this._crouchKey)
+        }
+        this.tweens.add({targets:this.player,scaleY:0.85,scaleX:1.1,duration:60,yoyo:true})
+      }
+    }
+    // Boat: hide legs when grounded, show full sprite when airborne
+    if(this._onBoat){
+      const inAir=!this.player.body.blocked.down
+      if(inAir){
+        this.player.setCrop(0,0,this.player.width,this.player.height)
+      } else {
+        // Grounded on boat — hide bottom 40% (legs below deck)
+        this.player.setCrop(0,0,this.player.width,Math.round(this.player.height*0.60))
+      }
+    }
+    // Ensure run animation is always playing when grounded and not crouching
+    if(this.player?.body?.blocked.down && !this.isJumping && !this.isCrouching && !this.isGameOver){
+      if(this.player.anims.currentAnim?.key !== this._runKey && this.player.anims.currentAnim?.key !== this._crouchKey){
+        this.player.play(this._runKey)
+      }
+      // If run anim is somehow paused/stopped, resume it
+      if(this.player.anims.currentAnim?.key === this._runKey && !this.player.anims.isPlaying){
+        this.player.play(this._runKey)
+      }
+    }
+    if(this.cKey?.isDown)this._startCrouch();else if(this.isCrouching)this._standUp()
+
+    // Biome timer
+    this._biomeTimer+=delta
+    if(this._biomeTimer>=BIOME_DURATION_MS&&!this._transitioning){
+      this._switchBiome()
+    }
+
+    // Boat follows player x in ocean biome
+    if(BIOMES[this._biomeIdx].hasBoat&&this._boat.visible){
+      this._boat.x=this.player.x
+    }
+
+    const speedRatio=this.currentSpeed/GameSettings.gameplay.baseSpeed
+    if(this.player.anims.currentAnim?.key===this._runKey){
+      this.player.anims.msPerFrame=Math.max(40,100/speedRatio)
+    }
+
+    this.runTimeMs+=delta
+    const seconds=this.runTimeMs/1000
+    this.score=Math.floor(seconds*10)
+    this.currentSpeed=Math.min(GameSettings.gameplay.maxSpeed,GameSettings.gameplay.baseSpeed+seconds*GameSettings.gameplay.speedIncreasePerSecond)
+    this.ground.tilePositionX+=this.currentSpeed*(delta/1000)
+    // Parallax scroll — far moves at 15%, mid at 40% of game speed
+    if(this._parFar){
+      this._parScrollFar += this.currentSpeed*(delta/1000)*0.15
+      this._parFar.tilePositionX = this._parScrollFar
+    }
+    if(this._parMid){
+      this._parScrollMid += this.currentSpeed*(delta/1000)*0.40
+      this._parMid.tilePositionX = this._parScrollMid
+    }
+    this.obstacles.getChildren().forEach(o=>{if(!o.active)return;o.setVelocityX(-this.currentSpeed);if(o.x<-220)o.destroy()})
+    this.coinGroup.getChildren().forEach(c=>{
+      if(!c.active)return
+      c.setVelocityX(-this.currentSpeed)
+      if(c.x<-110){c.destroy();return}
+      // Ground coin collect — must be horizontally close AND player feet near coin
+      if(c._groundCoin){
+        const xClose=Math.abs(this.player.x-c.x)<52
+        // Player feet Y = player.y (origin bottom), coin center Y = c.y
+        // Allow collect only when player feet within 55px of coin vertically
+        const playerFeetY=this.player.y
+        const yClose=Math.abs(playerFeetY-c.y)<55
+        if(xClose&&yClose){
+          c.destroy();this.sessionCoins++;this._showCoinPop(c.x,c.y);SFX.coin()
+        }
+      }
+    })
+    if(this.nextSpawnAt===0)this._scheduleNextSpawn(time)
+    if(time>=this.nextSpawnAt){this._spawnObstacle();this._scheduleNextSpawn(time)}
+    if(this.nextCoinAt===0)this._scheduleNextCoin(time)
+    if(time>=this.nextCoinAt){this._spawnCoin();this._scheduleNextCoin(time)}
+    this.scoreText?.setText('Score: '+this.score)
+    this.coinText?.setText(' '+this.sessionCoins+'  |  Total: '+CoinStore.get())
+
+    // ── POWERUP LOGIC ─────────────────────────────────────────────────────────
+    if(this._nextPowerupAt===0) this._scheduleNextPowerup()
+    if(this.time.now>=this._nextPowerupAt&&!this._powerupActive){
+      this._spawnPowerup();this._scheduleNextPowerup()
+    }
+
+    // Move powerup boxes with game speed + keep glow/label in sync
+    this.powerupGroup.getChildren().forEach(box=>{
+      if(!box.active) return
+      box.setVelocityX(-this.currentSpeed)
+      if(box._glow){box._glow.x=box.x;box._glow.y=box.y-28}
+      if(box._lbl){box._lbl.x=box.x;box._lbl.y=box.y-72}
+      if(box._arrow){box._arrow.x=box.x}
+      if(box.x<-100){
+        if(box._glow)box._glow.destroy()
+        if(box._lbl)box._lbl.destroy()
+        if(box._arrow)box._arrow.destroy()
+        box.destroy()
+      }
+    })
+
+    // Active powerup timer
+    if(this._powerupActive){
+      this._powerupTimer-=delta
+      const frac=Math.max(0,this._powerupTimer/8000)
+      // Update HUD bar
+      const barW=280
+      const barColor=this._powerupActive==='magnet'?0x00e5ff:0xffcc02
+      this._powerupBar.clear()
+      // Track (bg)
+      this._powerupBar.fillStyle(0x444444,1);this._powerupBar.fillRoundedRect(-140,32,barW,14,7)
+      // Fill
+      this._powerupBar.fillStyle(barColor,1);this._powerupBar.fillRoundedRect(-140,32,barW*frac,14,7)
+      // Glow on bar
+      this._powerupBar.fillStyle(barColor,0.3);this._powerupBar.fillRoundedRect(-140,28,barW*frac,22,11)
+      const secs=Math.ceil(this._powerupTimer/1000)
+      this._powerupLabel.setText((this._powerupActive==='magnet'?'MAGNET':'SHIELD')+' '+secs+'s')
+      // Pulse the whole HUD when about to expire
+      if(secs<=2&&!this._hudPulsing){
+        this._hudPulsing=true
+        this.tweens.add({targets:this._powerupHUD,scaleX:{from:1,to:1.08},scaleY:{from:1,to:1.08},duration:180,yoyo:true,repeat:-1})
+      }
+      if(secs>2&&this._hudPulsing){
+        this._hudPulsing=false
+        this.tweens.killTweensOf(this._powerupHUD)
+        this._powerupHUD.setScale(1)
+      }
+
+      // Magnet: pull nearby coins toward player
+      if(this._powerupActive==='magnet'){
+        this._magnetSprite.x=this.player.x+24
+        this._magnetSprite.y=this.player.y-this._pH*0.65
+        const targetX=this.player.x
+        const targetY=this.player.y-this._pH*0.5
+        this.coinGroup.getChildren().forEach(coin=>{
+          if(!coin.active) return
+          const dx=targetX-coin.x
+          const dy=targetY-coin.y
+          const dist=Math.sqrt(dx*dx+dy*dy)
+          if(dist<400){
+            // Kill bob/spin tweens so physics can take over
+            if(!coin._magnetized){
+              coin._magnetized=true
+              this.tweens.killTweensOf(coin)
+            }
+            // Speed scales with proximity — closer = faster pull
+            // Speed: 1400 at edge of range, 2200 at close range — very snappy
+            const speed=Math.max(1400, 2200*(1-dist/400))
+            const angle=Math.atan2(dy,dx)
+            coin.setVelocityX(Math.cos(angle)*speed)
+            coin.setVelocityY(Math.sin(angle)*speed)
+            // Collect immediately when close
+            if(dist<45){
+              coin.destroy()
+              this.sessionCoins++
+              this._showCoinPop(targetX,targetY-20)
+            }
+          }
+        })
+      }
+
+      // Shield: redraw glow ring around player
+      if(this._powerupActive==='shield'&&this._shieldGlow){
+        this._shieldGlow.clear()
+        const glowAlpha=0.3+Math.sin(this.time.now*0.008)*0.2
+        this._shieldGlow.lineStyle(4,0xffcc02,glowAlpha)
+        this._shieldGlow.strokeCircle(this.player.x,this.player.y-this._pH*0.5,48)
+        this._shieldGlow.lineStyle(2,0xffffff,glowAlpha*0.5)
+        this._shieldGlow.strokeCircle(this.player.x,this.player.y-this._pH*0.5,54)
+      }
+
+      if(this._powerupTimer<=0) this._deactivatePowerup()
+    }
+  }
 }
 
-function loadFarcasterScores(limit = 100) {
-  const key = 'crazyrunner_fc_scores'
-  const list = JSON.parse(localStorage.getItem(key) || '[]')
-  list.sort((a,b) => b.score - a.score || b.ts - a.ts)
-  return list.slice(0, limit)
+
+// ════════════════════════════════════════════════════════════════════════════
+// SOUND ENGINE — Web Audio API, all procedural, no files needed
+// ════════════════════════════════════════════════════════════════════════════
+const SFX = {
+  _ctx: null,
+  _bgGain: null,
+  _bgNodes: [],
+  _bgPlaying: false,
+  _bgLoopId: 0,
+  _bgSpeed: 1.0,
+  _muted: false,
+
+  ctx() {
+    if (!this._ctx) this._ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (this._ctx.state === 'suspended') this._ctx.resume()
+    return this._ctx
+  },
+
+  // ── Core tone builder ────────────────────────────────────────────────────
+  _tone(freq, type, vol, attack, sustain, decay, when) {
+    const c = this.ctx(), t = when || c.currentTime
+    const g = c.createGain()
+    g.connect(c.destination)
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(vol, t + attack)
+    g.gain.setValueAtTime(vol, t + attack + sustain)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + sustain + decay)
+    const o = c.createOscillator()
+    o.type = type
+    o.frequency.setValueAtTime(freq, t)
+    o.connect(g)
+    o.start(t)
+    o.stop(t + attack + sustain + decay + 0.05)
+    return { osc: o, gain: g, ctx: c, t }
+  },
+
+  _noise(vol, attack, decay, when) {
+    const c = this.ctx(), t = when || c.currentTime
+    const buf = c.createBuffer(1, c.sampleRate * 0.2, c.sampleRate)
+    const d = buf.getChannelData(0)
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+    const src = c.createBufferSource()
+    src.buffer = buf
+    const g = c.createGain()
+    g.gain.setValueAtTime(vol, t)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay)
+    const filt = c.createBiquadFilter()
+    filt.type = 'bandpass'; filt.frequency.value = 800; filt.Q.value = 0.5
+    src.connect(filt); filt.connect(g); g.connect(c.destination)
+    src.start(t); src.stop(t + attack + decay + 0.05)
+  },
+
+  // ── Sound effects ─────────────────────────────────────────────────────────
+  coin() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    // Bright ding: rising two-tone
+    this._tone(880, 'sine', 0.18, 0.005, 0.04, 0.12, t)
+    this._tone(1320, 'sine', 0.12, 0.005, 0.02, 0.10, t + 0.04)
+  },
+
+  jump() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    const { osc } = this._tone(180, 'square', 0.15, 0.01, 0.01, 0.18, t)
+    osc.frequency.linearRampToValueAtTime(420, t + 0.15)
+  },
+
+  land() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    this._tone(90, 'sine', 0.22, 0.005, 0.02, 0.08, t)
+    this._noise(0.12, 0.005, 0.06, t)
+  },
+
+  impactThud() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    // Hard thud — low punch + body noise
+    this._tone(60, 'sine', 0.5, 0.002, 0.02, 0.15, t)
+    this._tone(40, 'sine', 0.4, 0.002, 0.01, 0.12, t)
+    this._noise(0.35, 0.002, 0.12, t)
+    this.stopBG()
+  },
+
+  gameOver() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    // Dramatic descending crunch
+    this._tone(300, 'sawtooth', 0.25, 0.01, 0.05, 0.3, t)
+    this._tone(200, 'sawtooth', 0.22, 0.02, 0.05, 0.4, t + 0.1)
+    this._tone(120, 'sawtooth', 0.20, 0.02, 0.10, 0.6, t + 0.2)
+    this._noise(0.18, 0.01, 0.3, t)
+  },
+
+  powerupCollect(type) {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    if (type === 'magnet') {
+      // Magnetic shimmer — rising chord
+      ;[440, 554, 659, 880].forEach((f, i) => {
+        this._tone(f, 'sine', 0.14, 0.01, 0.05, 0.2, t + i * 0.06)
+      })
+    } else {
+      // Shield — triumphant fanfare
+      ;[523, 659, 784, 1047].forEach((f, i) => {
+        this._tone(f, 'triangle', 0.15, 0.01, 0.08, 0.25, t + i * 0.07)
+      })
+    }
+  },
+
+  powerupExpire() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    const { osc } = this._tone(440, 'sine', 0.15, 0.01, 0.05, 0.3, t)
+    osc.frequency.linearRampToValueAtTime(180, t + 0.35)
+  },
+
+  biomeTransition() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    // Whoosh sweep
+    const { osc } = this._tone(200, 'sine', 0.12, 0.05, 0.3, 0.4, t)
+    osc.frequency.linearRampToValueAtTime(800, t + 0.35)
+    osc.frequency.linearRampToValueAtTime(100, t + 0.75)
+    this._noise(0.08, 0.05, 0.5, t)
+  },
+
+  // ── Background music ──────────────────────────────────────────────────────
+  // Simple chiptune loop: bass + melody + hihat
+  startBG() {
+    if (this._muted) return
+    this.stopBG()  // always stop cleanly first
+    this._bgPlaying = true
+    this._bgLoopId++  // new unique id — any stale loop will see mismatch and die
+    const myId = this._bgLoopId
+    const c = this.ctx()
+    this._bgGain = c.createGain()
+    this._bgGain.gain.value = 0.07
+    this._bgGain.connect(c.destination)
+    this._scheduleBG(c.currentTime, myId)
+  },
+
+  stopBG() {
+    this._bgPlaying = false
+    this._bgLoopId++  // invalidate any running loop
+    if (this._bgGain && this._ctx) {
+      try { this._bgGain.gain.linearRampToValueAtTime(0.0001, this._ctx.currentTime + 0.2) } catch(e){}
+    }
+    this._bgNodes.forEach(n => { try { n.stop() } catch(e){} })
+    this._bgNodes = []
+  },
+
+  setBGSpeed(speed) {
+    this._bgSpeed = Math.min(2.2, Math.max(0.7, speed))
+  },
+
+  _scheduleBG(startTime, loopId) {
+    if (!this._bgPlaying || loopId !== this._bgLoopId) return  // stale loop — stop
+    const c = this.ctx()
+    const spd = this._bgSpeed  // snapshot once per loop
+    const beat = 0.20 / spd
+
+    const bassNotes = [110, 110, 138, 110, 165, 138, 110, 123]
+    const melNotes  = [440,   0, 554,   0, 494,   0, 392, 440]
+    const bars = 2, steps = bassNotes.length
+    const loopDur = steps * bars * beat
+
+    for (let bar = 0; bar < bars; bar++) {
+      for (let i = 0; i < steps; i++) {
+        const t = startTime + (bar * steps + i) * beat
+        if (t < c.currentTime) continue  // skip past beats
+
+        // Bass
+        const bg = c.createGain()
+        bg.connect(this._bgGain)
+        bg.gain.setValueAtTime(0.6, t)
+        bg.gain.exponentialRampToValueAtTime(0.0001, t + beat * 0.65)
+        const bo = c.createOscillator()
+        bo.type = 'square'; bo.frequency.value = bassNotes[i]
+        bo.connect(bg); bo.start(t); bo.stop(t + beat)
+        this._bgNodes.push(bo)
+
+        // Melody
+        if (melNotes[i] > 0) {
+          const mg = c.createGain()
+          mg.connect(this._bgGain)
+          mg.gain.setValueAtTime(0.35, t)
+          mg.gain.exponentialRampToValueAtTime(0.0001, t + beat * 0.45)
+          const mo = c.createOscillator()
+          mo.type = 'triangle'; mo.frequency.value = melNotes[i]
+          mo.connect(mg); mo.start(t); mo.stop(t + beat)
+          this._bgNodes.push(mo)
+        }
+
+        // Hi-hat on off-beats
+        if (i % 2 === 1) {
+          const nb = c.createBuffer(1, Math.floor(c.sampleRate * 0.03), c.sampleRate)
+          const nd = nb.getChannelData(0)
+          for (let k = 0; k < nd.length; k++) nd[k] = Math.random() * 2 - 1
+          const ns = c.createBufferSource(); ns.buffer = nb
+          const ng = c.createGain()
+          ng.gain.setValueAtTime(0.12, t)
+          ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03)
+          const nf = c.createBiquadFilter()
+          nf.type = 'highpass'; nf.frequency.value = 7000
+          ns.connect(nf); nf.connect(ng); ng.connect(this._bgGain)
+          ns.start(t); ns.stop(t + 0.04)
+          this._bgNodes.push(ns)
+        }
+      }
+    }
+
+    const nextStart = startTime + loopDur
+    const msUntilNext = (nextStart - c.currentTime) * 1000 - 120
+    setTimeout(() => {
+      this._bgNodes = []  // clear old refs
+      this._scheduleBG(nextStart, loopId)
+    }, Math.max(50, msUntilNext))
+  },
+
+  // ── Mute toggle ──────────────────────────────────────────────────────────
+  btnClick() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    // Soft tick click
+    this._tone(600, 'sine', 0.12, 0.005, 0.01, 0.08, t)
+    this._tone(900, 'sine', 0.08, 0.005, 0.005, 0.06, t + 0.02)
+  },
+
+  btnStart() {
+    if (this._muted) return
+    const c = this.ctx(), t = c.currentTime
+    // Energetic launch sound
+    this._tone(330, 'square', 0.18, 0.01, 0.04, 0.15, t)
+    this._tone(440, 'square', 0.15, 0.01, 0.04, 0.15, t + 0.08)
+    this._tone(660, 'sine',   0.18, 0.01, 0.06, 0.20, t + 0.16)
+  },
+
+  toggleMute() {
+    this._muted = !this._muted
+    if (this._muted) this.stopBG()
+    else this.startBG()
+    return this._muted
+  }
 }
 
-// ── LEADERBOARD PAGE (Warpcast-aware) ────────────────────────────────────
+// ══ LEADERBOARD PAGE ═══════════════════════════════════════════════════════
 function showLeaderboardPage(scene) {
   // Hide Phaser canvas
   const canvas = document.querySelector('canvas')
@@ -2252,50 +3130,25 @@ function showLeaderboardPage(scene) {
   const rankColors = ['#fbbf24','#9ca3af','#b45309']
   const rankEmoji = ['🥇','🥈','🥉']
 
-  function renderRows(scores, farcaster=false) {
+  function renderRows(scores) {
     if(!scores || scores.length === 0) return `
       <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
         No scores yet — be the first to play! 🎮
       </div>`
-    return scores.map((s,i)=>{
-      if (farcaster) {
-        const name = s.username ? '@' + s.username : (s.displayName || 'Farcaster user')
-        const pfp = s.pfpUrl ? `<img src="${s.pfpUrl}" style="width:36px;height:36px;border-radius:10px;object-fit:cover"/>` : `<div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.3)">FC</div>`
-        return `
-          <div style="
-            display:flex; align-items:center; gap:12px;
-            padding:12px 16px; border-radius:12px; margin-bottom:8px;
-            background:rgba(255,255,255,0.02);
-            border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
-          ">
-            <div style="width:36px;text-align:center;font-size:${i<3?'20px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
-              ${i<3?rankEmoji[i]:'#'+(i+1)}
-            </div>
-            <div style="width:44px">${pfp}</div>
-            <div style="flex:1;color:rgba(255,255,255,0.8);font-size:14px;font-family:'DM Sans',sans-serif">
-              <div style="font-weight:800">${name}</div>
-              <div style="font-size:12px;color:rgba(255,255,255,0.45)">${new Date(s.ts).toLocaleString()}</div>
-            </div>
-            <div style="font-weight:900;color:#4d9fff;font-size:16px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
-          </div>
-        `
-      } else {
-        return `
-          <div style="
-            display:flex; align-items:center; gap:14px;
-            padding:12px 16px; border-radius:12px; margin-bottom:8px;
-            background:rgba(255,255,255,0.04);
-            border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
-          ">
-            <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
-              ${i<3?rankEmoji[i]:'#'+(i+1)}
-            </div>
-            <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
-            <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
-          </div>
-        `
-      }
-    }).join('')
+    return scores.map((s,i)=>`
+      <div style="
+        display:flex; align-items:center; gap:14px;
+        padding:12px 16px; border-radius:12px; margin-bottom:8px;
+        background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
+      ">
+        <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
+          ${i<3?rankEmoji[i]:'#'+(i+1)}
+        </div>
+        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
+        <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
+      </div>
+    `).join('')
   }
 
   const page = document.createElement('div')
@@ -2307,21 +3160,25 @@ function showLeaderboardPage(scene) {
     font-family:'Syne',sans-serif;overflow-y:auto;padding:24px 16px 100px;
   `
   page.innerHTML = `
-    <div style="width:100%;max-width:620px;">
+    <div style="width:100%;max-width:420px;">
       <!-- Header -->
-      <div style="text-align:center;margin-bottom:18px;">
+      <div style="text-align:center;margin-bottom:28px;">
         <div style="font-size:36px;margin-bottom:8px;">🏆</div>
         <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">Leaderboard</div>
-        <div id="lb-subtitle" style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">Loading...</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">Top players on Base</div>
       </div>
 
       <!-- Scores -->
       <div id="lb-rows" style="margin-bottom:24px;">
         <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
-          Loading leaderboard...
+          Loading scores from Base... 🔵
         </div>
       </div>
 
+      <!-- Onchain notice -->
+      <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;margin-bottom:32px;">
+        🔵 Live scores from Base blockchain
+      </div>
     </div>
 
     <!-- Bottom nav buttons -->
@@ -2345,41 +3202,32 @@ function showLeaderboardPage(scene) {
         border:2px solid rgba(255,170,0,0.6);border-radius:14px;color:#ffaa00;
         font-family:'Syne',sans-serif;font-size:15px;font-weight:800;
         cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
-      ">↻  Refresh</button>
+      ">🏆  LEADERBOARD</button>
     </div>
   `
   document.body.appendChild(page)
 
-  const rowsEl = document.getElementById('lb-rows')
-  const subtitleEl = document.getElementById('lb-subtitle')
-  const farcasterActive = isFarcasterModeNow()
-
-  (async ()=>{
-    if (farcasterActive) {
-      subtitleEl.innerText = 'Top players (Warpcast local scores)'
-      const list = loadFarcasterScores(200)
-      rowsEl.innerHTML = renderRows(list, true)
-      return
-    }
-
-    // Non-Farcaster (normal website) — attempt loading from on-chain contract via RPC (as before)
-    subtitleEl.innerText = 'Top players on Base'
+  // Load real scores from contract using public RPC (no wallet needed)
+  ;(async ()=>{
+    const rowsEl = document.getElementById('lb-rows')
+    if(!rowsEl) return
     try {
-      const RPC = (typeof ACTIVE_CHAIN !== 'undefined' && ACTIVE_CHAIN === BASE_CHAIN_ID)
+      const RPC = ACTIVE_CHAIN === BASE_CHAIN_ID
         ? 'https://mainnet.base.org'
         : 'https://sepolia.base.org'
       const readProvider = new ethers.providers.JsonRpcProvider(RPC)
       const contract = new ethers.Contract(LEADERBOARD_ADDRESS, LEADERBOARD_ABI, readProvider)
       const raw = await contract.getTopScores()
       if(raw && raw.length > 0) {
+        const shortAddr = a => a ? a.slice(0,6)+'...'+a.slice(-4) : ''
         const mapped = raw.map(x=>({addr:getPlayerLabel(x.player), score:Number(x.score)}))
-        rowsEl.innerHTML = renderRows(mapped, false)
+        rowsEl.innerHTML = renderRows(mapped)
       } else {
-        rowsEl.innerHTML = renderRows([], false)
+        rowsEl.innerHTML = renderRows([])
       }
     } catch(e) {
       console.error('Leaderboard load error:', e)
-      rowsEl.innerHTML = renderRows([], false)
+      rowsEl.innerHTML = renderRows([])
     }
   })()
 
@@ -2389,107 +3237,196 @@ function showLeaderboardPage(scene) {
     scene.scene.start('StartScene')
   }
   document.getElementById('lb-stay-btn').onclick = ()=>{
-    // refresh the page contents (simple full reload of leaderboard display)
-    const refreshBtn = document.getElementById('lb-stay-btn')
-    refreshBtn.innerText = '↻  Refreshing...'
-    setTimeout(()=>{ refreshBtn.innerText = '↻  Refresh'; showLeaderboardPage(scene) }, 350)
+    // already on leaderboard, do nothing / scroll to top
+    page.scrollTo({top:0,behavior:'smooth'})
   }
 }
 
-// ── initGame and Farcaster init follow (no change to initGame) ─────────────
-// ... keep initGame() call earlier unchanged ...
-
-// ── Farcaster / Warpcast initialization and wallet helper ───────────────────
-import { sdk } from "https://esm.sh/@farcaster/miniapp-sdk"
-
-let farcasterUser = null
-let insideWarpcast = false
-
-const addrMapKey = "crazy_addr_to_fid"
-let addrMap = JSON.parse(localStorage.getItem(addrMapKey) || "{}")
-
-function saveAddrMap(){
-  localStorage.setItem(addrMapKey, JSON.stringify(addrMap))
-}
-
-function showFarcasterProfile(user){
-  const el = document.getElementById("fc-user")
-  const pfp = document.getElementById("fc-pfp")
-  const name = document.getElementById("fc-name")
-  if(!el) return
-  el.style.display = "flex"
-  pfp.src = user.pfpUrl || ''
-  name.innerText = user.displayName || user.username || ''
-}
-
-function toggleProfile(show){
-  const el = document.getElementById("fc-user")
-  if(!el) return
-  el.style.display = show ? "flex" : "none"
-}
-
-async function tryWarpcastWallet(context){
-  const provider = context?.client?.wallet?.ethProvider
-  if(!provider){
-    console.log("Warpcast wallet not available")
-    return
+function initGame(){
+  const config={
+    type:Phaser.WEBGL,width:GameSettings.canvas.width,height:GameSettings.canvas.height,
+    scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH,width:GameSettings.canvas.width,height:GameSettings.canvas.height},
+    backgroundColor:'#0d1117',
+    scene:[StartScene,GameScene],
+    physics:{default:'arcade',arcade:{debug:false}},
+    fps:{target:60,forceSetTimeOut:true},
+    pixelArt:false,antialias:true,
   }
   try{
-    // Only attempt silent finalise here
-    const connected = await window.W3.finalise(provider)
-    if(connected && window.W3.address){
-      console.log("Warpcast wallet connected")
-      if(farcasterUser && window.W3.address){
-        addrMap[window.W3.address.toLowerCase()] = farcasterUser
-        saveAddrMap()
-      }
-      // store farcaster profile for later use
-      window.W3.farcasterProfile = farcasterUser
-    }
-  }catch(err){
-    console.log("Silent Warpcast wallet connect failed", err)
+    const game=new Phaser.Game(config)
+    if(typeof window.__reportGameBoot__==='function')window.__reportGameBoot__()
+    game.events.once('ready',()=>{const s=game.scene.getScene('GameScene');if(s)ConfigManager.init(game,s)})
+    setTimeout(()=>{if(!ConfigManager.gameInstance){const s=game.scene.getScene('GameScene');if(s)ConfigManager.init(game,s)}},100)
+  }catch(e){console.error('[GAME] Failed:',e)}
+}
+initGame()
+</script>
+<script type="module">
+/*
+  Farcaster + Warpcast friendly auth helper
+  - Auto-detect Farcaster mini app context
+  - Show pfp/username UI if present
+  - Hide the wallet-connect overlay so game can start without MetaMask
+  - Try to finalise Warpcast provider for signing; otherwise only require wallet on submit
+*/
+
+import { sdk } from "https://esm.sh/@farcaster/miniapp-sdk";
+
+let farcasterUser = null;
+let insideWarpcast = false;
+
+const addrMapKey = "crazy_addr_to_fid";
+let addrMap = JSON.parse(localStorage.getItem(addrMapKey) || "{}");
+function saveAddrMap(){ localStorage.setItem(addrMapKey, JSON.stringify(addrMap)); }
+
+function showFarcasterProfile(user){
+  const el = document.getElementById("fc-user");
+  const pfp = document.getElementById("fc-pfp");
+  const name = document.getElementById("fc-name");
+  if(!el) return;
+  el.style.display = "flex";
+  if(pfp && user?.pfpUrl) pfp.src = user.pfpUrl;
+  if(name) name.innerText = user.displayName || (user.username ? "@" + user.username : "Farcaster user");
+}
+
+function removeBlockingOverlays(){
+  // remove known overlay by id
+  const knownIds = ['w3-blur-overlay','w3-overlay','overlay'];
+  knownIds.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el){ el.style.transition='opacity .25s'; el.style.opacity='0'; setTimeout(()=>el.remove(),260); }
+  });
+
+  // remove by known class prefixes (be permissive but targeted)
+  const classCandidates = ['w3-blur-overlay','.w3-blur-overlay','.connect-overlay','.wallet-overlay','.w3-overlay'];
+  classCandidates.forEach(sel=>{
+    const els = document.querySelectorAll(sel);
+    els.forEach(el=>{
+      el.style.transition='opacity .25s'; el.style.opacity='0';
+      setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); },260);
+    });
+  });
+
+  // hide connect buttons to avoid user confusion (but don't break the DOM)
+  const btnIds = ['w3-btn-base','connect-wallet-btn','wallet-connect'];
+  btnIds.forEach(id=>{
+    const b = document.getElementById(id);
+    if(b) b.style.display = 'none';
+  });
+}
+
+// Make in-page play buttons clickable if they were disabled by overlay logic
+function enablePlayUI(){
+  // common selectors for play/start buttons:
+  const selectors = ['#playBtn','.play-btn','.start-button','#start','.btn-play','button.play'];
+  selectors.forEach(sel=>{
+    document.querySelectorAll(sel).forEach(b=>{
+      try{ b.disabled = false; b.classList.remove('disabled'); b.removeAttribute('aria-disabled'); }catch(e){}
+    });
+  });
+
+  // remove pointer-events:none on main container if present
+  const containers = ['#game-container','.game-wrapper','.main'];
+  containers.forEach(sel=>{
+    document.querySelectorAll(sel).forEach(c=>{
+      c.style.pointerEvents = 'auto';
+      c.style.opacity = '';
+    });
+  });
+}
+
+async function tryFinaliseWithProvider(provider){
+  if(!provider) return false;
+  try{
+    const ok = await window.W3.finalise(provider);
+    return !!ok;
+  }catch(e){
+    console.warn('finalise failed', e);
+    return false;
   }
 }
 
 async function initFarcaster(){
   try{
-    await sdk.actions.ready()
-    const context = await sdk.context
+    await sdk.actions.ready();
+    const context = await sdk.context;
+
     if(context?.user){
-      insideWarpcast = true
-      farcasterUser = context.user
-      console.log("Farcaster user detected:", farcasterUser)
-      showFarcasterProfile(farcasterUser)
-      tryWarpcastWallet(context)
+      insideWarpcast = true;
+      farcasterUser = context.user;
+
+      // present UI
+      showFarcasterProfile(farcasterUser);
+
+      // remove- or hide- blocking overlays so player can play immediately
+      removeBlockingOverlays();
+      enablePlayUI();
+
+      // Persist some visible state for the rest of the app
+      window.W3 = window.W3 || {};
+      window.W3.farcasterProfile = farcasterUser;
+      // Treat the user as "connected" for UI purposes (allows starting game).
+      // NOTE: this does NOT create a signer if no provider exists — it only bypasses UI-blocking checks.
+      window.W3.connected = true;
+      window.W3.connectedVia = window.W3.connectedVia || 'farcaster-ui';
+
+      // If Warpcast provides an eth provider, attempt to finalise (so sign works without MetaMask)
+      const provider = context?.client?.wallet?.ethProvider;
+      const finalised = await tryFinaliseWithProvider(provider);
+      if(finalised && window.W3.address){
+        // Map address -> farcaster profile for leaderboard
+        addrMap[window.W3.address.toLowerCase()] = farcasterUser;
+        saveAddrMap();
+        window.W3.connected = true;
+        window.W3.connectedVia = 'warpcast-provider';
+      } else {
+        // still allow UI to play even if no signer
+        window.W3.connected = true;
+        window.W3.connectedVia = window.W3.connectedVia || 'farcaster-ui';
+      }
     }
   }catch(err){
-    console.log("Not running inside Warpcast", err)
+    console.log('Farcaster SDK not available or not inside Warpcast.', err?.message || err);
   }
 }
 
-document.getElementById("w3-btn-base")?.addEventListener("click", async ()=>{
-  // If inside Warpcast, try silent connect first
-  if (insideWarpcast) {
-    const context = await sdk.context
-    const provider = context?.client?.wallet?.ethProvider
-    if (provider) {
-      const ok = await window.W3.finalise(provider)
-      if (ok) return
+// Click handler for Connect Wallet button — Warpcast-aware
+async function connectWallet(){
+  try{
+    if(insideWarpcast){
+      const context = await sdk.context;
+      const provider = context?.client?.wallet?.ethProvider;
+      if(provider){
+        const ok = await tryFinaliseWithProvider(provider);
+        if(ok) return;
+      }
     }
+    // fallback: open the normal wallet connect flow (metamask / walletconnect)
+    if(window.W3 && window.W3.connectBase) {
+      await window.W3.connectBase();
+    } else {
+      console.warn('window.W3.connectBase() not available.');
+    }
+  }catch(e){
+    console.error('connectWallet error', e);
   }
-  await window.W3.connectBase()
-})
-
-window.getPlayerLabel = function(address){
-  if(!address) return ""
-  const p = addrMap[address.toLowerCase()]
-  if(p){
-    return "@" + (p.username || p.displayName)
-  }
-  return address.slice(0,6) + "..." + address.slice(-4)
 }
 
-initFarcaster()
+// Small helper used by leaderboard code to display username when available
+window.getPlayerLabel = function(address){
+  if(!address) return "";
+  const p = addrMap[address.toLowerCase()];
+  if(p) return (p.username ? '@' + p.username : (p.displayName || 'Farcaster user'));
+  // fallback to short address if mapping not found
+  try{ return address.slice(0,6) + '...' + address.slice(-4); }catch(e){ return address; }
+};
+
+// Hook connect button if present
+document.getElementById("w3-btn-base")?.addEventListener("click", (e)=>{ e.preventDefault(); connectWallet(); });
+
+// Init
+initFarcaster();
+
 </script>
 </body>
 </html>
