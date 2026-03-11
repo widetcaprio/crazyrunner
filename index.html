@@ -3263,170 +3263,154 @@ initGame()
 </script>
 <script type="module">
 /*
-  Farcaster + Warpcast friendly auth helper
-  - Auto-detect Farcaster mini app context
-  - Show pfp/username UI if present
-  - Hide the wallet-connect overlay so game can start without MetaMask
-  - Try to finalise Warpcast provider for signing; otherwise only require wallet on submit
+  Farcaster Mini App - Auto Auth (2025 correct approach)
+  - Detects if inside Farcaster/Warpcast/Base App
+  - If yes: auto-login with user's Farcaster profile (pfp, username, name)
+            hide ALL wallet connect UI, no MetaMask popup
+  - If no (regular website): show normal wallet connect as usual
 */
 
 import { sdk } from "https://esm.sh/@farcaster/miniapp-sdk";
 
-let farcasterUser = null;
-let insideWarpcast = false;
-
+// ── Address → Farcaster profile map (for leaderboard display) ──
 const addrMapKey = "crazy_addr_to_fid";
-let addrMap = JSON.parse(localStorage.getItem(addrMapKey) || "{}");
-function saveAddrMap(){ localStorage.setItem(addrMapKey, JSON.stringify(addrMap)); }
+let addrMap = {};
+try { addrMap = JSON.parse(localStorage.getItem(addrMapKey) || "{}"); } catch(e){}
+function saveAddrMap(){ try { localStorage.setItem(addrMapKey, JSON.stringify(addrMap)); } catch(e){} }
 
-function showFarcasterProfile(user){
-  const el = document.getElementById("fc-user");
-  const pfp = document.getElementById("fc-pfp");
+// ── Show Farcaster profile in the UI (the #fc-user element) ──
+function showFarcasterProfile(user) {
+  const el   = document.getElementById("fc-user");
+  const pfp  = document.getElementById("fc-pfp");
   const name = document.getElementById("fc-name");
-  if(!el) return;
+  if (!el) return;
   el.style.display = "flex";
-  if(pfp && user?.pfpUrl) pfp.src = user.pfpUrl;
-  if(name) name.innerText = user.displayName || (user.username ? "@" + user.username : "Farcaster user");
+  if (pfp && user?.pfpUrl)   pfp.src       = user.pfpUrl;
+  if (name) name.innerText = user.displayName || (user.username ? "@" + user.username : "Farcaster user");
 }
 
-function removeBlockingOverlays(){
-  // remove known overlay by id
-  const knownIds = ['w3-blur-overlay','w3-overlay','overlay'];
-  knownIds.forEach(id=>{
+// ── Hide every wallet-connect overlay / button ──
+function hideWalletUI() {
+  // Common IDs used in this codebase
+  ["w3-blur-overlay","w3-overlay","overlay","connect-wallet-btn","w3-btn-base","wallet-connect"].forEach(id => {
     const el = document.getElementById(id);
-    if(el){ el.style.transition='opacity .25s'; el.style.opacity='0'; setTimeout(()=>el.remove(),260); }
+    if (el) { el.style.display = "none"; el.style.opacity = "0"; el.style.pointerEvents = "none"; }
   });
 
-  // remove by known class prefixes (be permissive but targeted)
-  const classCandidates = ['w3-blur-overlay','.w3-blur-overlay','.connect-overlay','.wallet-overlay','.w3-overlay'];
-  classCandidates.forEach(sel=>{
-    const els = document.querySelectorAll(sel);
-    els.forEach(el=>{
-      el.style.transition='opacity .25s'; el.style.opacity='0';
-      setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); },260);
+  // Common class names
+  [".w3-blur-overlay",".connect-overlay",".wallet-overlay",".w3-overlay"].forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.style.display = "none"; el.style.opacity = "0"; el.style.pointerEvents = "none";
     });
   });
 
-  // hide connect buttons to avoid user confusion (but don't break the DOM)
-  const btnIds = ['w3-btn-base','connect-wallet-btn','wallet-connect'];
-  btnIds.forEach(id=>{
-    const b = document.getElementById(id);
-    if(b) b.style.display = 'none';
-  });
-}
-
-// Make in-page play buttons clickable if they were disabled by overlay logic
-function enablePlayUI(){
-  // common selectors for play/start buttons:
-  const selectors = ['#playBtn','.play-btn','.start-button','#start','.btn-play','button.play'];
-  selectors.forEach(sel=>{
-    document.querySelectorAll(sel).forEach(b=>{
-      try{ b.disabled = false; b.classList.remove('disabled'); b.removeAttribute('aria-disabled'); }catch(e){}
-    });
-  });
-
-  // remove pointer-events:none on main container if present
-  const containers = ['#game-container','.game-wrapper','.main'];
-  containers.forEach(sel=>{
-    document.querySelectorAll(sel).forEach(c=>{
-      c.style.pointerEvents = 'auto';
-      c.style.opacity = '';
+  // Make game canvas and container fully interactive
+  ["#game-container",".game-wrapper","canvas"].forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.style.pointerEvents = "auto";
+      el.style.opacity = "";
+      el.style.filter = "";
     });
   });
 }
 
-async function tryFinaliseWithProvider(provider){
-  if(!provider) return false;
-  try{
-    const ok = await window.W3.finalise(provider);
-    return !!ok;
-  }catch(e){
-    console.warn('finalise failed', e);
-    return false;
-  }
-}
+// ── Main init ──
+async function initFarcaster() {
+  let insideMiniApp = false;
+  let farcasterUser = null;
+  let ethProvider   = null;
 
-async function initFarcaster(){
-  try{
-    await sdk.actions.ready();
+  try {
+    // sdk.context is a promise in the latest SDK — await it
     const context = await sdk.context;
 
-    if(context?.user){
-      insideWarpcast = true;
+    // If context.user exists, we are inside a Farcaster client (Warpcast / Base App)
+    if (context && context.user && context.user.fid) {
+      insideMiniApp = true;
       farcasterUser = context.user;
+      ethProvider   = context.client?.wallet?.ethProvider || null;
+    }
+  } catch (err) {
+    // Not inside a Farcaster client — normal browser
+    console.log("Not a Farcaster mini app context:", err?.message || err);
+  }
 
-      // present UI
-      showFarcasterProfile(farcasterUser);
+  if (insideMiniApp && farcasterUser) {
+    // ─── INSIDE FARCASTER MINI APP ───────────────────────────────────────────
+    // 1. Tell Farcaster splash screen to hide (REQUIRED or users see infinite loader)
+    try { await sdk.actions.ready(); } catch(e) {}
 
-      // remove- or hide- blocking overlays so player can play immediately
-      removeBlockingOverlays();
-      enablePlayUI();
+    // 2. Show user's Farcaster profile in UI
+    showFarcasterProfile(farcasterUser);
 
-      // Persist some visible state for the rest of the app
-      window.W3 = window.W3 || {};
-      window.W3.farcasterProfile = farcasterUser;
-      // Treat the user as "connected" for UI purposes (allows starting game).
-      // NOTE: this does NOT create a signer if no provider exists — it only bypasses UI-blocking checks.
-      window.W3.connected = true;
-      window.W3.connectedVia = window.W3.connectedVia || 'farcaster-ui';
+    // 3. Hide ALL wallet connect UI — user is already authenticated via Farcaster
+    hideWalletUI();
 
-      // If Warpcast provides an eth provider, attempt to finalise (so sign works without MetaMask)
-      const provider = context?.client?.wallet?.ethProvider;
-      const finalised = await tryFinaliseWithProvider(provider);
-      if(finalised && window.W3.address){
-        // Map address -> farcaster profile for leaderboard
-        addrMap[window.W3.address.toLowerCase()] = farcasterUser;
-        saveAddrMap();
-        window.W3.connected = true;
-        window.W3.connectedVia = 'warpcast-provider';
-      } else {
-        // still allow UI to play even if no signer
-        window.W3.connected = true;
-        window.W3.connectedVia = window.W3.connectedVia || 'farcaster-ui';
+    // 4. Set W3 as "connected" using Farcaster identity so game can start
+    window.W3 = window.W3 || {};
+    window.W3.connected    = true;
+    window.W3.connectedVia = "farcaster";
+    window.W3.farcasterUser = farcasterUser;
+    window.W3.fid          = farcasterUser.fid;
+    window.W3.username     = farcasterUser.username || "";
+    window.W3.displayName  = farcasterUser.displayName || farcasterUser.username || "Player";
+    window.W3.pfpUrl       = farcasterUser.pfpUrl || "";
+
+    // 5. If the Farcaster client injected an eth provider (Warpcast / Base App wallet),
+    //    use it for on-chain score submission — no MetaMask needed
+    if (ethProvider) {
+      try {
+        const web3Provider = new ethers.providers.Web3Provider(ethProvider);
+        const accounts = await web3Provider.listAccounts();
+        if (accounts && accounts[0]) {
+          window.W3.address = accounts[0];
+          window.W3.signer  = web3Provider.getSigner();
+          // Map address to farcaster profile for leaderboard
+          addrMap[accounts[0].toLowerCase()] = farcasterUser;
+          saveAddrMap();
+        }
+        // Override W3.submitScore to use the injected provider
+        const originalSubmitScore = window.W3.submitScore?.bind(window.W3);
+        window.W3.submitScore = async (score) => {
+          try {
+            if (!window.W3.signer) {
+              // Try to request accounts if not yet done
+              await web3Provider.send("eth_requestAccounts", []);
+              window.W3.signer  = web3Provider.getSigner();
+              window.W3.address = await window.W3.signer.getAddress();
+            }
+            if (originalSubmitScore) return await originalSubmitScore(score);
+          } catch(e) {
+            console.warn("Score submit via Farcaster wallet failed:", e);
+            return null;
+          }
+        };
+      } catch(e) {
+        console.warn("Could not set up Farcaster eth provider:", e);
       }
     }
-  }catch(err){
-    console.log('Farcaster SDK not available or not inside Warpcast.', err?.message || err);
+
+    // 6. Also intercept W3.connect so if something calls it inside mini app,
+    //    it doesn't pop MetaMask — it just returns true (already connected)
+    window.W3.connect = async () => true;
+
+  } else {
+    // ─── REGULAR WEBSITE (not inside Farcaster) ──────────────────────────────
+    // Normal wallet connect flow runs as designed — do nothing extra here
+    console.log("Regular website mode — normal wallet connect active");
   }
 }
 
-// Click handler for Connect Wallet button — Warpcast-aware
-async function connectWallet(){
-  try{
-    if(insideWarpcast){
-      const context = await sdk.context;
-      const provider = context?.client?.wallet?.ethProvider;
-      if(provider){
-        const ok = await tryFinaliseWithProvider(provider);
-        if(ok) return;
-      }
-    }
-    // fallback: open the normal wallet connect flow (metamask / walletconnect)
-    if(window.W3 && window.W3.connectBase) {
-      await window.W3.connectBase();
-    } else {
-      console.warn('window.W3.connectBase() not available.');
-    }
-  }catch(e){
-    console.error('connectWallet error', e);
-  }
-}
-
-// Small helper used by leaderboard code to display username when available
-window.getPlayerLabel = function(address){
-  if(!address) return "";
+// ── Leaderboard helper: show username if we have it, else short address ──
+window.getPlayerLabel = function(address) {
+  if (!address) return "";
   const p = addrMap[address.toLowerCase()];
-  if(p) return (p.username ? '@' + p.username : (p.displayName || 'Farcaster user'));
-  // fallback to short address if mapping not found
-  try{ return address.slice(0,6) + '...' + address.slice(-4); }catch(e){ return address; }
+  if (p) return p.username ? "@" + p.username : (p.displayName || "Farcaster user");
+  try { return address.slice(0,6) + "..." + address.slice(-4); } catch(e) { return address; }
 };
 
-// Hook connect button if present
-document.getElementById("w3-btn-base")?.addEventListener("click", (e)=>{ e.preventDefault(); connectWallet(); });
-
-// Init
+// Run it
 initFarcaster();
-
 </script>
 </body>
 </html>
