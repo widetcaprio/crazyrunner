@@ -1071,13 +1071,14 @@ const MOCK_SCORES = [
   { addr: '0x9999...0001', score: 9340  },
 ]
 
-window.W3.provider = null;
-window.W3.signer = null;
-window.W3.address = null;
-window.W3.connected = false;
-window.W3.submitting = false;
+window.W3 = {
+  provider: null,
+  signer: null,
+  address: null,
+  connected: false,
+  submitting: false,
 
-window.W3.shortAddr = function(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' };
+  shortAddr(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' },
 
   // ── Switch / add Base network ──────────────────────────────
   async switchToBase(provider) {
