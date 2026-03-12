@@ -1291,13 +1291,9 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     const btn = document.getElementById('w3-btn-base');
     if (btn) btn.style.display = 'none';
 
-    // Show connected bar with user info
+    // Hide connected bar (silver card at top right) - we already have profile at top left
     const bar = document.getElementById('w3-connected-bar');
-    const addrEl = document.getElementById('w3-addr-display');
-    if (bar && addrEl) {
-      addrEl.textContent = '@' + (window.W3.farcasterUser.username || window.W3.farcasterUser.displayName);
-      bar.classList.add('visible');
-    }
+    if (bar) bar.style.display = 'none';
 
     // Load local leaderboard
     window.W3.loadLeaderboard();
@@ -1985,6 +1981,12 @@ class GameScene extends Phaser.Scene {
   create(){
     const W=this.scale.width,H=this.scale.height
     this.cameras.main.fadeIn(350,0,0,0)
+
+    // Hide profile bar when game is running (mini app)
+    const fcUser = document.getElementById('fc-user');
+    if (fcUser) fcUser.style.display = 'none';
+    const fcBar = document.getElementById('w3-connected-bar');
+    if (fcBar) fcBar.style.display = 'none';
 
     // ── BACKGROUND IMAGE (stretches to fill) ──────────────────────────────────
     this._bgImage=this.add.image(0,0,BIOMES[0].bgKey).setOrigin(0,0)
@@ -2778,6 +2780,11 @@ class GameScene extends Phaser.Scene {
       homeHit.on('pointerout',()=>{ homeBg.clear(); homeBg.fillStyle(0x1a3a6b,1); homeBg.fillRect(0,H-btnH,W/2,btnH); homeBg.fillStyle(0x2563eb,1); homeBg.fillRect(0,H-btnH,W/2,3) })
       homeHit.on('pointerdown',()=>{
         SFX.btnClick()
+        // Show profile when going back to menu
+        const fcUser = document.getElementById('fc-user');
+        if (fcUser && window.W3.miniAppMode) fcUser.style.display = 'flex';
+        const fcBar = document.getElementById('w3-connected-bar');
+        if (fcBar && window.W3.miniAppMode) fcBar.style.display = 'flex';
         this.cameras.main.fadeOut(220,0,0,0)
         this.time.delayedCall(220,()=>this.scene.start('StartScene'))
       })
@@ -3382,6 +3389,11 @@ function showLeaderboardPage(scene) {
   document.getElementById('lb-play-btn').onclick = ()=>{
     page.remove()
     if(canvas) canvas.style.display = ''
+    // Show profile when going back to menu from leaderboard
+    const fcUser = document.getElementById('fc-user');
+    if (fcUser && window.W3.miniAppMode) fcUser.style.display = 'flex';
+    const fcBar = document.getElementById('w3-connected-bar');
+    if (fcBar && window.W3.miniAppMode) fcBar.style.display = 'flex';
     scene.scene.start('StartScene')
   }
   document.getElementById('lb-stay-btn').onclick = ()=>{
