@@ -1166,10 +1166,24 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
-    // MINI APP MODE: Save locally, don't submit to blockchain
-    // Check both miniAppMode flag and farcasterUser presence
-    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
+    // Check if mini app mode - try to detect if not already set
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
     
+    // If not detected yet, try to detect now
+    if (!isMiniApp) {
+      try {
+        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+        await sdk.actions.ready();
+        const context = await sdk.context;
+        if (context?.user) {
+          window.W3.miniAppMode = true;
+          window.W3.farcasterUser = context.user;
+          isMiniApp = true;
+        }
+      } catch(e) {}
+    }
+    
+    // MINI APP MODE: Save locally, don't submit to blockchain
     if (isMiniApp && window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl;
@@ -1219,8 +1233,24 @@ window.W3 = {
     if(!container) return
     let scores = []
 
+    // Check if mini app mode
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
+    
+    // Try to detect if not already set
+    if (!isMiniApp) {
+      try {
+        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+        await sdk.actions.ready();
+        const context = await sdk.context;
+        if (context?.user) {
+          window.W3.miniAppMode = true;
+          window.W3.farcasterUser = context.user;
+          isMiniApp = true;
+        }
+      } catch(e) {}
+    }
+
     // Reload local scores from storage first
-    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
     if (isMiniApp) {
       loadLocalScores();
     }
