@@ -986,6 +986,82 @@ const LEADERBOARD_ABI = [
 ]
 const LEADERBOARD_ADDRESS = "0x3ff2fad90059Cd49F175EA7BB8f777BDae7fd853"  // Base Mainnet
 
+// ═══════════════════════════════════════════════════════════════
+// MINI APP MODE DETECTION
+// ═══════════════════════════════════════════════════════════════
+window.W3 = window.W3 || {};
+window.W3.miniAppMode = false;
+window.W3.farcasterUser = null;
+window.W3.localScores = [];
+window.W3.localScoresKey = 'crazyrunner_local_scores';
+
+// Helper to display username or address on leaderboard
+window.getPlayerLabel = function(address) {
+  if (!address) return '';
+  // If mini app mode, just return the short address
+  if (window.W3.miniAppMode) {
+    return address.slice(0, 6) + '...' + address.slice(-4);
+  }
+  // Check if we have a mapped farcaster profile for this address
+  const addrMapKey = 'crazyrunner_addr_map';
+  try {
+    const addrMap = JSON.parse(localStorage.getItem(addrMapKey)) || {};
+    const p = addrMap[address.toLowerCase()];
+    if (p) return p.username ? '@' + p.username : (p.displayName || 'Farcaster user');
+  } catch(e) {}
+  // Fallback to short address
+  try { return address.slice(0, 6) + '...' + address.slice(-4); } catch(e) { return address; }
+};
+
+// Load local scores from localStorage
+function loadLocalScores() {
+  try {
+    const stored = localStorage.getItem(window.W3.localScoresKey);
+    if (stored) {
+      window.W3.localScores = JSON.parse(stored);
+    }
+  } catch(e) { window.W3.localScores = []; }
+  return window.W3.localScores;
+}
+
+// Save score locally (for mini app)
+function saveLocalScore(username, pfpUrl, score) {
+  const scores = loadLocalScores();
+  const existingIdx = scores.findIndex(s => s.username === username);
+  if (existingIdx >= 0) {
+    if (score > scores[existingIdx].score) {
+      scores[existingIdx].score = score;
+      scores[existingIdx].pfpUrl = pfpUrl;
+    }
+  } else {
+    scores.push({ username, pfpUrl, score, timestamp: Date.now() });
+  }
+  scores.sort((a, b) => b.score - a.score);
+  window.W3.localScores = scores.slice(0, 100); // Keep top 100
+  try {
+    localStorage.setItem(window.W3.localScoresKey, JSON.stringify(window.W3.localScores));
+  } catch(e) {}
+  return window.W3.localScores;
+}
+
+// Check if running inside Warpcast/Farcaster
+async function detectMiniAppMode() {
+  try {
+    const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+    await sdk.actions.ready();
+    const context = await sdk.context;
+    if (context?.user) {
+      window.W3.miniAppMode = true;
+      window.W3.farcasterUser = context.user;
+      window.W3.connected = true;
+      window.W3.connectedVia = 'farcaster';
+      return true;
+    }
+  } catch(e) {}
+  window.W3.miniAppMode = false;
+  return false;
+}
+
 // ── Leaderboard mock data (shown until contract is deployed) ────
 const MOCK_SCORES = [
   { addr: '0xaBc1...9F3d', score: 18420 },
@@ -995,11 +1071,13 @@ const MOCK_SCORES = [
   { addr: '0x9999...0001', score: 9340  },
 ]
 
-window.W3 = {
-  provider: null, signer: null, address: null,
-  connected: false, submitting: false,
+window.W3.provider = null;
+window.W3.signer = null;
+window.W3.address = null;
+window.W3.connected = false;
+window.W3.submitting = false;
 
-  shortAddr(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' },
+window.W3.shortAddr = function(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' };
 
   // ── Switch / add Base network ──────────────────────────────
   async switchToBase(provider) {
@@ -1087,6 +1165,17 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
+    // MINI APP MODE: Save locally, don't submit to blockchain
+    if (window.W3.miniAppMode && window.W3.farcasterUser) {
+      const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
+      const pfpUrl = window.W3.farcasterUser.pfpUrl;
+      saveLocalScore(username, pfpUrl, score);
+      this.loadLeaderboard();
+      console.log('[W3] Score saved locally for:', username, 'Score:', score);
+      return 'local-score';
+    }
+
+    // Normal mode: requires wallet connection
     if (!this.connected) return false
     if (!LEADERBOARD_ADDRESS) {
       // Contract not deployed — simulate for now
@@ -1126,7 +1215,14 @@ window.W3 = {
     if(!container) return
     let scores = []
 
-    if(!LEADERBOARD_ADDRESS) {
+    // MINI APP MODE: Show local scores
+    if (window.W3.miniAppMode && window.W3.localScores.length > 0) {
+      scores = window.W3.localScores.slice(0, 10).map(s => ({
+        addr: s.username,
+        score: s.score,
+        pfpUrl: s.pfpUrl
+      }));
+    } else if (!LEADERBOARD_ADDRESS) {
       scores = this._mockScores || MOCK_SCORES
     } else {
       try {
@@ -1138,8 +1234,9 @@ window.W3 = {
     }
 
     const medals = ['gold','silver','bronze']
+    const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
-      const isYou = this.address && s.addr===this.shortAddr(this.address)
+      const isYou = currentUser && s.addr === currentUser;
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
         <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
@@ -1153,7 +1250,7 @@ window.W3 = {
 const PRIVY_APP_ID = 'cmmg9fbg800jv0cl86x57h6mh'
 
 // ── Wire up buttons ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', ()=>{
+document.addEventListener('DOMContentLoaded', async ()=>{
   const setLoading = (loading) => {
     const btn = document.getElementById('w3-btn-base')
     if(btn) btn.disabled = loading
@@ -1161,43 +1258,78 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(t) t.innerHTML = loading ? '<span class="w3-spinner"></span>' : 'Connect Wallet'
   }
 
-  // ── Farcaster Mini App SDK: call ready() FIRST, then auto-connect ─────────
-  ;(async () => {
-    try {
-      // Always do a fresh dynamic import — the <head> module sets window.__farcasterSdk__
-      // but we can't rely on timing, so import directly here too
-      const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk')
+  // ── Detect mini app mode FIRST ─────────────────────────────────
+  const isMiniApp = await detectMiniAppMode();
+  loadLocalScores();
 
-      // ✅ CRITICAL: call ready() IMMEDIATELY — before any wallet or context work
-      // If this is delayed or skipped, Farcaster shows "Ready not called" splash forever
-      await sdk.actions.ready()
-      console.log('[Farcaster] sdk.actions.ready() called ✅')
+  if (isMiniApp && window.W3.farcasterUser) {
+    console.log('[W3] Running in mini app mode, user:', window.W3.farcasterUser.username);
+    
+    // Show user profile in top bar
+    const fcUser = document.getElementById('fc-user');
+    const fcPfp = document.getElementById('fc-pfp');
+    const fcName = document.getElementById('fc-name');
+    if (fcUser) {
+      fcUser.style.display = 'flex';
+      if (fcPfp && window.W3.farcasterUser.pfpUrl) {
+        fcPfp.src = window.W3.farcasterUser.pfpUrl;
+      }
+      if (fcName) {
+        fcName.textContent = '@' + (window.W3.farcasterUser.username || window.W3.farcasterUser.displayName);
+      }
+    }
 
-      // Now safe to do context / wallet work
-      const context = await sdk.context
+    // Hide wallet connect overlay
+    const ov = document.getElementById('w3-blur-overlay');
+    if (ov) {
+      ov.style.opacity = '0';
+      setTimeout(() => ov.style.display = 'none', 500);
+    }
 
-      if (context?.user) {
-        console.log('[Farcaster] Running inside Warpcast, user:', context.user.username)
+    // Hide connect button
+    const btn = document.getElementById('w3-btn-base');
+    if (btn) btn.style.display = 'none';
 
-        // If the Mini App context exposes a wallet provider, use it directly
-        if (context?.client?.wallet?.ethProvider || window.ethereum) {
-          const provider = context?.client?.wallet?.ethProvider || window.ethereum
-          try {
-            const connected = await window.W3.finalise(provider)
-            if (connected) {
-              console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
-            }
-          } catch(walletErr) {
-            console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
+    // Show connected bar with user info
+    const bar = document.getElementById('w3-connected-bar');
+    const addrEl = document.getElementById('w3-addr-display');
+    if (bar && addrEl) {
+      addrEl.textContent = '@' + (window.W3.farcasterUser.username || window.W3.farcasterUser.displayName);
+      bar.classList.add('visible');
+    }
+
+    // Load local leaderboard
+    window.W3.loadLeaderboard();
+    return; // Don't do wallet connect flow
+  }
+
+  // ── Normal website mode: setup wallet connect ──────────────────
+  // Farcode Mini App SDK: call ready() FIRST, then auto-connect
+  try {
+    const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk')
+    await sdk.actions.ready()
+    console.log('[Farcaster] sdk.actions.ready() called ✅')
+
+    const context = await sdk.context
+    if (context?.user) {
+      console.log('[Farcaster] Running inside Warpcast, user:', context.user.username)
+
+      // If the Mini App context exposes a wallet provider, use it directly
+      if (context?.client?.wallet?.ethProvider || window.ethereum) {
+        const provider = context?.client?.wallet?.ethProvider || window.ethereum
+        try {
+          const connected = await window.W3.finalise(provider)
+          if (connected) {
+            console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
           }
+        } catch(walletErr) {
+          console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
         }
       }
-    } catch(e) {
-      // Not inside Warpcast, or SDK not available — fail silently
-      console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
     }
-  })()
-  // ─────────────────────────────────────────────────────────────────────────
+  } catch(e) {
+    console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
+  }
 
   document.getElementById('w3-btn-base')?.addEventListener('click', async ()=>{
     setLoading(true)
@@ -3129,6 +3261,8 @@ function showLeaderboardPage(scene) {
 
   const rankColors = ['#fbbf24','#9ca3af','#b45309']
   const rankEmoji = ['🥇','🥈','🥉']
+  const isMiniApp = window.W3.miniAppMode;
+  const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
 
   function renderRows(scores) {
     if(!scores || scores.length === 0) return `
@@ -3159,25 +3293,29 @@ function showLeaderboardPage(scene) {
     display:flex;flex-direction:column;align-items:center;
     font-family:'Syne',sans-serif;overflow-y:auto;padding:24px 16px 100px;
   `
+  
+  const headerText = isMiniApp ? 'Your Scores' : 'Top players on Base';
+  const noticeText = isMiniApp ? '📱 Scores saved locally on this device' : '🔵 Live scores from Base blockchain';
+  
   page.innerHTML = `
     <div style="width:100%;max-width:420px;">
       <!-- Header -->
       <div style="text-align:center;margin-bottom:28px;">
         <div style="font-size:36px;margin-bottom:8px;">🏆</div>
         <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">Leaderboard</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">Top players on Base</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">${headerText}</div>
       </div>
 
       <!-- Scores -->
       <div id="lb-rows" style="margin-bottom:24px;">
         <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
-          Loading scores from Base... 🔵
+          ${isMiniApp ? 'Loading local scores...' : 'Loading scores from Base... 🔵'}
         </div>
       </div>
 
-      <!-- Onchain notice -->
+      <!-- Notice -->
       <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;margin-bottom:32px;">
-        🔵 Live scores from Base blockchain
+        ${noticeText}
       </div>
     </div>
 
@@ -3207,10 +3345,19 @@ function showLeaderboardPage(scene) {
   `
   document.body.appendChild(page)
 
-  // Load real scores from contract using public RPC (no wallet needed)
+  // Load scores - local for mini app, on-chain for website
   ;(async ()=>{
     const rowsEl = document.getElementById('lb-rows')
     if(!rowsEl) return
+    
+    // MINI APP MODE: Show local scores
+    if (isMiniApp) {
+      const scores = loadLocalScores().slice(0, 10);
+      rowsEl.innerHTML = renderRows(scores);
+      return;
+    }
+    
+    // Normal mode: fetch from blockchain
     try {
       const RPC = ACTIVE_CHAIN === BASE_CHAIN_ID
         ? 'https://mainnet.base.org'
@@ -3260,173 +3407,6 @@ function initGame(){
   }catch(e){console.error('[GAME] Failed:',e)}
 }
 initGame()
-</script>
-<script type="module">
-/*
-  Farcaster + Warpcast friendly auth helper
-  - Auto-detect Farcaster mini app context
-  - Show pfp/username UI if present
-  - Hide the wallet-connect overlay so game can start without MetaMask
-  - Try to finalise Warpcast provider for signing; otherwise only require wallet on submit
-*/
-
-import { sdk } from "https://esm.sh/@farcaster/miniapp-sdk";
-
-let farcasterUser = null;
-let insideWarpcast = false;
-
-const addrMapKey = "crazy_addr_to_fid";
-let addrMap = JSON.parse(localStorage.getItem(addrMapKey) || "{}");
-function saveAddrMap(){ localStorage.setItem(addrMapKey, JSON.stringify(addrMap)); }
-
-function showFarcasterProfile(user){
-  const el = document.getElementById("fc-user");
-  const pfp = document.getElementById("fc-pfp");
-  const name = document.getElementById("fc-name");
-  if(!el) return;
-  el.style.display = "flex";
-  if(pfp && user?.pfpUrl) pfp.src = user.pfpUrl;
-  if(name) name.innerText = user.displayName || (user.username ? "@" + user.username : "Farcaster user");
-}
-
-function removeBlockingOverlays(){
-  // remove known overlay by id
-  const knownIds = ['w3-blur-overlay','w3-overlay','overlay'];
-  knownIds.forEach(id=>{
-    const el = document.getElementById(id);
-    if(el){ el.style.transition='opacity .25s'; el.style.opacity='0'; setTimeout(()=>el.remove(),260); }
-  });
-
-  // remove by known class prefixes (be permissive but targeted)
-  const classCandidates = ['w3-blur-overlay','.w3-blur-overlay','.connect-overlay','.wallet-overlay','.w3-overlay'];
-  classCandidates.forEach(sel=>{
-    const els = document.querySelectorAll(sel);
-    els.forEach(el=>{
-      el.style.transition='opacity .25s'; el.style.opacity='0';
-      setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); },260);
-    });
-  });
-
-  // hide connect buttons to avoid user confusion (but don't break the DOM)
-  const btnIds = ['w3-btn-base','connect-wallet-btn','wallet-connect'];
-  btnIds.forEach(id=>{
-    const b = document.getElementById(id);
-    if(b) b.style.display = 'none';
-  });
-}
-
-// Make in-page play buttons clickable if they were disabled by overlay logic
-function enablePlayUI(){
-  // common selectors for play/start buttons:
-  const selectors = ['#playBtn','.play-btn','.start-button','#start','.btn-play','button.play'];
-  selectors.forEach(sel=>{
-    document.querySelectorAll(sel).forEach(b=>{
-      try{ b.disabled = false; b.classList.remove('disabled'); b.removeAttribute('aria-disabled'); }catch(e){}
-    });
-  });
-
-  // remove pointer-events:none on main container if present
-  const containers = ['#game-container','.game-wrapper','.main'];
-  containers.forEach(sel=>{
-    document.querySelectorAll(sel).forEach(c=>{
-      c.style.pointerEvents = 'auto';
-      c.style.opacity = '';
-    });
-  });
-}
-
-async function tryFinaliseWithProvider(provider){
-  if(!provider) return false;
-  try{
-    const ok = await window.W3.finalise(provider);
-    return !!ok;
-  }catch(e){
-    console.warn('finalise failed', e);
-    return false;
-  }
-}
-
-async function initFarcaster(){
-  try{
-    await sdk.actions.ready();
-    const context = await sdk.context;
-
-    if(context?.user){
-      insideWarpcast = true;
-      farcasterUser = context.user;
-
-      // present UI
-      showFarcasterProfile(farcasterUser);
-
-      // remove- or hide- blocking overlays so player can play immediately
-      removeBlockingOverlays();
-      enablePlayUI();
-
-      // Persist some visible state for the rest of the app
-      window.W3 = window.W3 || {};
-      window.W3.farcasterProfile = farcasterUser;
-      // Treat the user as "connected" for UI purposes (allows starting game).
-      // NOTE: this does NOT create a signer if no provider exists — it only bypasses UI-blocking checks.
-      window.W3.connected = true;
-      window.W3.connectedVia = window.W3.connectedVia || 'farcaster-ui';
-
-      // If Warpcast provides an eth provider, attempt to finalise (so sign works without MetaMask)
-      const provider = context?.client?.wallet?.ethProvider;
-      const finalised = await tryFinaliseWithProvider(provider);
-      if(finalised && window.W3.address){
-        // Map address -> farcaster profile for leaderboard
-        addrMap[window.W3.address.toLowerCase()] = farcasterUser;
-        saveAddrMap();
-        window.W3.connected = true;
-        window.W3.connectedVia = 'warpcast-provider';
-      } else {
-        // still allow UI to play even if no signer
-        window.W3.connected = true;
-        window.W3.connectedVia = window.W3.connectedVia || 'farcaster-ui';
-      }
-    }
-  }catch(err){
-    console.log('Farcaster SDK not available or not inside Warpcast.', err?.message || err);
-  }
-}
-
-// Click handler for Connect Wallet button — Warpcast-aware
-async function connectWallet(){
-  try{
-    if(insideWarpcast){
-      const context = await sdk.context;
-      const provider = context?.client?.wallet?.ethProvider;
-      if(provider){
-        const ok = await tryFinaliseWithProvider(provider);
-        if(ok) return;
-      }
-    }
-    // fallback: open the normal wallet connect flow (metamask / walletconnect)
-    if(window.W3 && window.W3.connectBase) {
-      await window.W3.connectBase();
-    } else {
-      console.warn('window.W3.connectBase() not available.');
-    }
-  }catch(e){
-    console.error('connectWallet error', e);
-  }
-}
-
-// Small helper used by leaderboard code to display username when available
-window.getPlayerLabel = function(address){
-  if(!address) return "";
-  const p = addrMap[address.toLowerCase()];
-  if(p) return (p.username ? '@' + p.username : (p.displayName || 'Farcaster user'));
-  // fallback to short address if mapping not found
-  try{ return address.slice(0,6) + '...' + address.slice(-4); }catch(e){ return address; }
-};
-
-// Hook connect button if present
-document.getElementById("w3-btn-base")?.addEventListener("click", (e)=>{ e.preventDefault(); connectWallet(); });
-
-// Init
-initFarcaster();
-
 </script>
 </body>
 </html>
