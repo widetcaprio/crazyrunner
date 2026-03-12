@@ -1167,11 +1167,14 @@ window.W3 = {
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
     // MINI APP MODE: Save locally, don't submit to blockchain
-    if (window.W3.miniAppMode && window.W3.farcasterUser) {
+    // Check both miniAppMode flag and farcasterUser presence
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
+    
+    if (isMiniApp && window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl;
       saveLocalScore(username, pfpUrl, score);
-      this.loadLeaderboard();
+      window.W3.loadLeaderboard();
       console.log('[W3] Score saved locally for:', username, 'Score:', score);
       return 'local-score';
     }
@@ -1181,7 +1184,7 @@ window.W3 = {
     if (!LEADERBOARD_ADDRESS) {
       // Contract not deployed — simulate for now
       this._addMockScore(this.address, score)
-      this.loadLeaderboard()
+      window.W3.loadLeaderboard()
       return 'mock-tx'
     }
     if (this.submitting) return false
@@ -1191,7 +1194,7 @@ window.W3 = {
       const tx = await c.submitScore(score)
       const receipt = await tx.wait()
       this.submitting = false
-      this.loadLeaderboard()
+      window.W3.loadLeaderboard()
       return tx.hash
     } catch(e) {
       this.submitting = false
@@ -1216,8 +1219,14 @@ window.W3 = {
     if(!container) return
     let scores = []
 
+    // Reload local scores from storage first
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
+    if (isMiniApp) {
+      loadLocalScores();
+    }
+
     // MINI APP MODE: Show local scores
-    if (window.W3.miniAppMode && window.W3.localScores.length > 0) {
+    if (isMiniApp && window.W3.localScores.length > 0) {
       scores = window.W3.localScores.slice(0, 10).map(s => ({
         addr: s.username,
         score: s.score,
@@ -1229,15 +1238,24 @@ window.W3 = {
       try {
         const c = new ethers.Contract(LEADERBOARD_ADDRESS, LEADERBOARD_ABI, this.provider)
         const raw = await c.getTopScores()
-        scores = raw.map(x=>({addr:getPlayerLabel(x.player), score:Number(x.score)}))
-                    .sort((a,b)=>b.score-a.score).slice(0,10)
+        // Deduplicate - keep only highest score per address
+        const addrScores = {};
+        raw.forEach(x => {
+          const addr = x.player;
+          const sc = Number(x.score);
+          if (!addrScores[addr] || sc > addrScores[addr].score) {
+            addrScores[addr] = { addr: getPlayerLabel(addr), score: sc };
+          }
+        });
+        scores = Object.values(addrScores).sort((a,b)=>b.score-a.score).slice(0,10)
       } catch(e) { scores = MOCK_SCORES }
     }
 
     const medals = ['gold','silver','bronze']
     const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
+    const currentAddr = window.W3.address ? window.W3.shortAddr(window.W3.address) : null;
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
-      const isYou = currentUser && s.addr === currentUser;
+      const isYou = (currentUser && s.addr === currentUser) || (currentAddr && s.addr === currentAddr);
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
         <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
