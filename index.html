@@ -1050,14 +1050,18 @@ async function detectMiniAppMode() {
     const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
     await sdk.actions.ready();
     const context = await sdk.context;
+    console.log('[DEBUG] detectMiniAppMode context:', context);
     if (context?.user) {
       window.W3.miniAppMode = true;
       window.W3.farcasterUser = context.user;
       window.W3.connected = true;
       window.W3.connectedVia = 'farcaster';
+      console.log('[DEBUG] Mini app detected! User:', context.user.username);
       return true;
     }
-  } catch(e) {}
+  } catch(e) {
+    console.log('[DEBUG] detectMiniAppMode error:', e.message);
+  }
   window.W3.miniAppMode = false;
   return false;
 }
@@ -1166,25 +1170,25 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
-    // Check if mini app mode - try to detect if not already set
-    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
+    // Check if mini app mode using stored user data
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    console.log('[DEBUG] submitScore called, isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
     
-    // If not detected yet, try to detect now
-    if (!isMiniApp) {
+    // If not detected yet, try to get from existing SDK
+    if (!isMiniApp && window.__farcasterSdk__) {
       try {
-        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
-        await sdk.actions.ready();
-        const context = await sdk.context;
+        const context = await window.__farcasterSdk__.context;
         if (context?.user) {
           window.W3.miniAppMode = true;
           window.W3.farcasterUser = context.user;
-          isMiniApp = true;
+          window.W3.connected = true;
+          console.log('[DEBUG] Detected from existing SDK, user:', context.user.username);
         }
-      } catch(e) {}
+      } catch(e) { console.log('[DEBUG] SDK context error:', e); }
     }
     
     // MINI APP MODE: Save locally, don't submit to blockchain
-    if (isMiniApp && window.W3.farcasterUser) {
+    if (window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl;
       saveLocalScore(username, pfpUrl, score);
@@ -1193,6 +1197,7 @@ window.W3 = {
       return 'local-score';
     }
 
+    console.log('[DEBUG] Not mini app mode, using wallet connection');
     // Normal mode: requires wallet connection
     if (!this.connected) return false
     if (!LEADERBOARD_ADDRESS) {
@@ -1233,22 +1238,8 @@ window.W3 = {
     if(!container) return
     let scores = []
 
-    // Check if mini app mode
-    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null);
-    
-    // Try to detect if not already set
-    if (!isMiniApp) {
-      try {
-        const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
-        await sdk.actions.ready();
-        const context = await sdk.context;
-        if (context?.user) {
-          window.W3.miniAppMode = true;
-          window.W3.farcasterUser = context.user;
-          isMiniApp = true;
-        }
-      } catch(e) {}
-    }
+    // Check if mini app mode using stored user data
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
 
     // Reload local scores from storage first
     if (isMiniApp) {
@@ -2293,23 +2284,31 @@ class GameScene extends Phaser.Scene {
         submitting:  [0xcc8800, 0xffaa00],
         done:        [0x16a34a, 0x22c55e],
         no_contract: [0xcc5500, 0xff8800],
+        local:       [0x7c3aed, 0xa855f7],  // purple for mini app
       }
       const [fill, border] = colors[state] || colors.idle
       submitBtnGfx.fillStyle(fill, 1);        submitBtnGfx.fillRoundedRect(-145,232,290,34,17)
       submitBtnGfx.lineStyle(2, border, 1);   submitBtnGfx.strokeRoundedRect(-145,232,290,34,17)
       submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
     }
-    drawSubmitBtn(window.W3.connected ? 'idle' : 'no_wallet')
+    
+    // Check if mini app mode
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    
+    drawSubmitBtn(window.W3.connected || isMiniApp ? 'idle' : 'no_wallet')
 
-    if (!window.W3.connected) {
+    if (!window.W3.connected && !isMiniApp) {
       submitBtnTxt.setText('🔗  Connect Wallet First')
       submitBtnTxt.setColor('#aaaaaa')
+    } else if (isMiniApp) {
+      submitBtnTxt.setText('💾  Save Score (Local)')
+      submitBtnTxt.setColor('#ffffff')
     }
 
     // Hit area for submit button
     const submitHit = this.add.rectangle(0, 248, 290, 34).setInteractive({useHandCursor:true})
     submitHit.on('pointerdown', async () => {
-      if (!window.W3.connected) {
+      if (!window.W3.connected && !isMiniApp) {
         // Try to connect now
         submitBtnTxt.setText('⏳  Connecting wallet...')
         drawSubmitBtn('submitting')
@@ -2320,12 +2319,25 @@ class GameScene extends Phaser.Scene {
           return
         }
       }
-      submitBtnTxt.setText('⏳  Submitting to Base...')
+      
+      // Different text for mini app vs website
+      if (isMiniApp) {
+        submitBtnTxt.setText('⏳  Saving locally...')
+      } else {
+        submitBtnTxt.setText('⏳  Submitting to Base...')
+      }
       drawSubmitBtn('submitting')
+      
       const txHash = await window.W3.submitScore(this.score)
+      
       if (txHash) {
-        submitBtnTxt.setText('✅  Score saved on Base!')
-        drawSubmitBtn('done')
+        if (txHash === 'local-score') {
+          submitBtnTxt.setText('✅  Score saved locally!')
+          drawSubmitBtn('local')
+        } else {
+          submitBtnTxt.setText('✅  Score saved on Base!')
+          drawSubmitBtn('done')
+        }
         submitHit.disableInteractive()
       } else if (!LEADERBOARD_ADDRESS) {
         submitBtnTxt.setText('⚠️  Deploy contract first')
