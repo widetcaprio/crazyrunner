@@ -989,18 +989,12 @@ const LEADERBOARD_ADDRESS = "0x3ff2fad90059Cd49F175EA7BB8f777BDae7fd853"  // Bas
 // ═══════════════════════════════════════════════════════════════
 // MINI APP MODE DETECTION
 // ═══════════════════════════════════════════════════════════════
-window.W3_MINI_APP = window.W3_MINI_APP || {
-  miniAppMode: false,
-  farcasterUser: null,
-  localScores: [],
-  localScoresKey: 'crazyrunner_local_scores'
-};
 
 // Helper to display username or address on leaderboard
 window.getPlayerLabel = function(address) {
   if (!address) return '';
   // If mini app mode, just return the short address
-  if (window.W3_MINI_APP.miniAppMode) {
+  if (window.W3.miniAppMode) {
     return address.slice(0, 6) + '...' + address.slice(-4);
   }
   // Check if we have a mapped farcaster profile for this address
@@ -1016,25 +1010,18 @@ window.getPlayerLabel = function(address) {
 
 // Load local scores from localStorage
 function loadLocalScores() {
-  if (!window.W3_MINI_APP.localScores) {
-    window.W3_MINI_APP.localScores = [];
-  }
   try {
-    const stored = localStorage.getItem(window.W3_MINI_APP.localScoresKey);
+    const stored = localStorage.getItem('crazyrunner_local_scores');
     if (stored) {
-      window.W3_MINI_APP.localScores = JSON.parse(stored);
+      return JSON.parse(stored);
     }
-  } catch(e) { window.W3_MINI_APP.localScores = []; }
-  return window.W3_MINI_APP.localScores;
+  } catch(e) {}
+  return [];
 }
 
 // Save score locally (for mini app)
 function saveLocalScore(username, pfpUrl, score) {
-  // Initialize if needed
-  if (!window.W3_MINI_APP.localScores) {
-    window.W3_MINI_APP.localScores = [];
-  }
-  const scores = window.W3_MINI_APP.localScores.slice(); // Make a copy
+  const scores = loadLocalScores();
   const existingIdx = scores.findIndex(s => s.username === username);
   if (existingIdx >= 0) {
     if (score > scores[existingIdx].score) {
@@ -1045,23 +1032,24 @@ function saveLocalScore(username, pfpUrl, score) {
     scores.push({ username, pfpUrl, score, timestamp: Date.now() });
   }
   scores.sort((a, b) => b.score - a.score);
-  window.W3_MINI_APP.localScores = scores.slice(0, 100); // Keep top 100
+  scores = scores.slice(0, 100);
   try {
-    localStorage.setItem(window.W3_MINI_APP.localScoresKey, JSON.stringify(window.W3_MINI_APP.localScores));
+    localStorage.setItem('crazyrunner_local_scores', JSON.stringify(scores));
   } catch(e) {}
-  return window.W3_MINI_APP.localScores;
+  return scores;
 }
 
 // Check if running inside Warpcast/Farcaster
 async function detectMiniAppMode() {
-  // First check localStorage (persists across pages)
+  // First check localStorage
   const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
   const savedUser = localStorage.getItem('crazy_farcaster_user');
   if (savedMiniApp === 'true' && savedUser) {
     try {
-      window.W3_MINI_APP.farcasterUser = JSON.parse(savedUser);
-      window.W3_MINI_APP.miniAppMode = true;
-      console.log('[DEBUG] Restored from localStorage, user:', window.W3_MINI_APP.farcasterUser.username);
+      window.W3.farcasterUser = JSON.parse(savedUser);
+      window.W3.miniAppMode = true;
+      window.W3.connected = true;
+      console.log('[DEBUG] Restored from localStorage');
       return true;
     } catch(e) {}
   }
@@ -1072,11 +1060,11 @@ async function detectMiniAppMode() {
     const context = await sdk.context;
     console.log('[DEBUG] detectMiniAppMode context:', context);
     if (context?.user) {
-      window.W3_MINI_APP.miniAppMode = true;
-      window.W3_MINI_APP.farcasterUser = context.user;
+      window.W3.miniAppMode = true;
+      window.W3.farcasterUser = context.user;
       window.W3.connected = true;
       
-      // Save to localStorage for persistence
+      // Save to localStorage
       localStorage.setItem('crazy_miniapp_mode', 'true');
       localStorage.setItem('crazy_farcaster_user', JSON.stringify(context.user));
       
@@ -1086,7 +1074,7 @@ async function detectMiniAppMode() {
   } catch(e) {
     console.log('[DEBUG] detectMiniAppMode error:', e.message);
   }
-  window.W3_MINI_APP.miniAppMode = false;
+  window.W3.miniAppMode = false;
   return false;
 }
 
@@ -1099,30 +1087,14 @@ const MOCK_SCORES = [
   { addr: '0x9999...0001', score: 9340  },
 ];
 
-// Store mini app data in separate variables (won't get overwritten)
-window.W3_MINI_APP = window.W3_MINI_APP || {
-  miniAppMode: false,
-  farcasterUser: null,
-  localScores: [],
-  localScoresKey: 'crazyrunner_local_scores'
-};
-
 window.W3 = {
   provider: null,
   signer: null,
   address: null,
   connected: false,
   submitting: false,
-
-  get miniAppMode() { return window.W3_MINI_APP.miniAppMode; },
-  get farcasterUser() { return window.W3_MINI_APP.farcasterUser; },
-  get localScores() { return window.W3_MINI_APP.localScores; },
-  get localScoresKey() { return window.W3_MINI_APP.localScoresKey; },
-  set miniAppMode(v) { window.W3_MINI_APP.miniAppMode = v; },
-  set farcasterUser(v) { window.W3_MINI_APP.farcasterUser = v; },
-  set localScores(v) { window.W3_MINI_APP.localScores = v; },
-  set localScoresKey(v) { window.W3_MINI_APP.localScoresKey = v; },
-
+  miniAppMode: false,
+  farcasterUser: null,
   shortAddr(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' },
 
   // ── Switch / add Base network ──────────────────────────────
