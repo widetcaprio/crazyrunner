@@ -1100,22 +1100,12 @@ const MOCK_SCORES = [
   { addr: '0x9999...0001', score: 9340  },
 ]
 
-// Preserve mini app settings if already set
-const _prevMiniApp = window.W3.miniAppMode;
-const _prevUser = window.W3.farcasterUser;
-const _prevScores = window.W3.localScores;
-const _prevKey = window.W3.localScoresKey;
-
 window.W3 = {
   provider: null,
   signer: null,
   address: null,
   connected: false,
   submitting: false,
-  miniAppMode: _prevMiniApp || false,
-  farcasterUser: _prevUser || null,
-  localScores: _prevScores || [],
-  localScoresKey: _prevKey || 'crazyrunner_local_scores',
 
   shortAddr(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' },
 
