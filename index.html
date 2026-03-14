@@ -1046,93 +1046,40 @@ function saveLocalScore(username, pfpUrl, score) {
 
 // Check if running inside Warpcast/Farcaster
 async function detectMiniAppMode() {
-  // First check if SDK was already loaded via window.__farcasterSdk__ (from script tag)
-  let sdk = window.__farcasterSdk__;
-  
-  // If not, try to get from global farcaster object (native in mini app)
-  if (!sdk && window.farcaster) {
-    sdk = window.farcaster;
-  }
-  
-  // Last resort: try to import from CDN
-  if (!sdk) {
+  // First check localStorage (persists across pages)
+  const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+  const savedUser = localStorage.getItem('crazy_farcaster_user');
+  if (savedMiniApp === 'true' && savedUser) {
     try {
-      const module = await import('https://esm.sh/@farcaster/miniapp-sdk');
-      sdk = module.sdk;
-    } catch(e) {
-      console.log('[DEBUG] Could not load SDK from CDN:', e.message);
-    }
-  }
-  
-  if (!sdk) {
-    // Check URL params as last resort for mini app detection
-    const urlParams = new URLSearchParams(window.location.search);
-    const frameContext = urlParams.get('frameContext');
-    const fid = urlParams.get('fid');
-    
-    if (frameContext === 'miniapp' || fid) {
-      console.log('[DEBUG] Mini app detected from URL params, frameContext:', frameContext, 'fid:', fid);
+      window.W3.farcasterUser = JSON.parse(savedUser);
       window.W3.miniAppMode = true;
-      window.W3.farcasterUser = { 
-        username: urlParams.get('username') || 'User',
-        displayName: urlParams.get('displayName') || 'Farcaster User',
-        pfpUrl: urlParams.get('pfpUrl') || null,
-        fid: fid
-      };
       window.W3.connected = true;
-      window.W3.connectedVia = 'farcaster';
+      console.log('[DEBUG] Restored from localStorage, user:', window.W3.farcasterUser.username);
       return true;
-    }
-    
-    console.log('[DEBUG] No SDK available');
-    window.W3.miniAppMode = false;
-    return false;
+    } catch(e) {}
   }
   
   try {
-    // In mini app, sdk.actions.ready() might not need to be called or might work differently
-    if (sdk.actions?.ready) {
-      try {
-        await sdk.actions.ready();
-      } catch(e) {
-        console.log('[DEBUG] sdk.actions.ready() skipped:', e.message);
-      }
-    }
-    
-    const context = sdk.context;
-    // Handle both sync and async context
-    const resolvedContext = context instanceof Promise ? await context : context;
-    console.log('[DEBUG] detectMiniAppMode context:', resolvedContext);
-    
-    if (resolvedContext?.user) {
+    const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+    await sdk.actions.ready();
+    const context = await sdk.context;
+    console.log('[DEBUG] detectMiniAppMode context:', context);
+    if (context?.user) {
       window.W3.miniAppMode = true;
-      window.W3.farcasterUser = resolvedContext.user;
+      window.W3.farcasterUser = context.user;
       window.W3.connected = true;
       window.W3.connectedVia = 'farcaster';
-      console.log('[DEBUG] Mini app detected! User:', resolvedContext.user.username);
+      
+      // Save to localStorage for persistence
+      localStorage.setItem('crazy_miniapp_mode', 'true');
+      localStorage.setItem('crazy_farcaster_user', JSON.stringify(context.user));
+      
+      console.log('[DEBUG] Mini app detected! User:', context.user.username);
       return true;
-    } else {
-      // Even without user, we might be in mini app - check URL params
-      console.log('[DEBUG] No user in context, checking URL params...');
-      const urlParams = new URLSearchParams(window.location.search);
-      const fid = urlParams.get('fid');
-      if (fid) {
-        window.W3.miniAppMode = true;
-        window.W3.farcasterUser = { 
-          username: urlParams.get('username') || 'User',
-          displayName: urlParams.get('displayName') || 'Farcaster User',
-          pfpUrl: urlParams.get('pfpUrl') || null,
-          fid: fid
-        };
-        window.W3.connected = true;
-        window.W3.connectedVia = 'farcaster';
-        return true;
-      }
     }
   } catch(e) {
     console.log('[DEBUG] detectMiniAppMode error:', e.message);
   }
-  
   window.W3.miniAppMode = false;
   return false;
 }
@@ -1241,60 +1188,27 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
-    // Check if mini app mode using stored user data
+    // Check if mini app mode - check localStorage as fallback
     let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-    console.log('[DEBUG] submitScore called, isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
     
-    // If not detected yet, try multiple methods to get SDK
+    // If not detected yet, check localStorage
     if (!isMiniApp) {
-      let sdk = window.__farcasterSdk__;
-      
-      // Try window.farcaster (native in Warpcast)
-      if (!sdk && window.farcaster) {
-        sdk = window.farcaster;
-        console.log('[DEBUG] Using window.farcaster');
-      }
-      
-      // Try getting context from SDK
-      if (sdk) {
+      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+      const savedUser = localStorage.getItem('crazy_farcaster_user');
+      if (savedMiniApp === 'true' && savedUser) {
         try {
-          const context = sdk.context;
-          const resolvedContext = context instanceof Promise ? await context : context;
-          console.log('[DEBUG] SDK context:', resolvedContext);
-          if (resolvedContext?.user) {
-            window.W3.miniAppMode = true;
-            window.W3.farcasterUser = resolvedContext.user;
-            window.W3.connected = true;
-            isMiniApp = true;
-            console.log('[DEBUG] Detected from SDK, user:', resolvedContext.user.username);
-          }
-        } catch(e) { console.log('[DEBUG] SDK context error:', e); }
-      }
-      
-      // Additional fallback: check URL params for mini app indicators
-      if (!isMiniApp) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const frameContext = urlParams.get('frameContext');
-        const fid = urlParams.get('fid');
-        console.log('[DEBUG] URL params - frameContext:', frameContext, 'fid:', fid);
-        
-        if (frameContext === 'miniapp' || fid) {
-          console.log('[DEBUG] Detected mini app from URL params');
-          // Still need user info - use URL params as fallback
+          window.W3.farcasterUser = JSON.parse(savedUser);
           window.W3.miniAppMode = true;
-          window.W3.farcasterUser = { 
-            username: urlParams.get('username') || 'User',
-            displayName: urlParams.get('displayName') || 'User',
-            pfpUrl: urlParams.get('pfpUrl') || null,
-            fid: fid
-          };
           window.W3.connected = true;
           isMiniApp = true;
-        }
+          console.log('[DEBUG] Restored mini app user from localStorage:', window.W3.farcasterUser.username);
+        } catch(e) {}
       }
     }
     
-    // MINI APP MODE: Save locally, don't submit to blockchain
+    console.log('[DEBUG] submitScore isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
+    
+    // MINI APP MODE: Save locally
     if (isMiniApp && window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl;
@@ -1345,8 +1259,21 @@ window.W3 = {
     if(!container) return
     let scores = []
 
-    // Check if mini app mode using stored user data
-    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    // Check if mini app mode - check localStorage as fallback
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    
+    // If not detected yet, check localStorage
+    if (!isMiniApp) {
+      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+      const savedUser = localStorage.getItem('crazy_farcaster_user');
+      if (savedMiniApp === 'true' && savedUser) {
+        try {
+          window.W3.farcasterUser = JSON.parse(savedUser);
+          window.W3.miniAppMode = true;
+          isMiniApp = true;
+        } catch(e) {}
+      }
+    }
 
     // Reload local scores from storage first
     if (isMiniApp) {
@@ -1447,41 +1374,31 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   }
 
   // ── Normal website mode: setup wallet connect ──────────────────
-  // Farcode Mini App SDK: call ready() FIRST, then auto-connect (only if not already detected)
-  if (!window.W3.miniAppMode) {
-    try {
-      let sdk = window.__farcasterSdk__;
-      if (!sdk && window.farcaster) sdk = window.farcaster;
-      
-      if (sdk) {
-        if (sdk.actions?.ready) {
-          try { await sdk.actions.ready(); } catch(e) {}
-        }
-        console.log('[Farcaster] SDK ready ✅')
+  // Farcode Mini App SDK: call ready() FIRST, then auto-connect
+  try {
+    const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk')
+    await sdk.actions.ready()
+    console.log('[Farcaster] sdk.actions.ready() called ✅')
 
-        const context = sdk.context;
-        const resolvedContext = context instanceof Promise ? await context : context;
-        
-        if (resolvedContext?.user) {
-          console.log('[Farcaster] Running inside Warpcast, user:', resolvedContext.user.username)
+    const context = await sdk.context
+    if (context?.user) {
+      console.log('[Farcaster] Running inside Warpcast, user:', context.user.username)
 
-          // If the Mini App context exposes a wallet provider, use it directly
-          if (resolvedContext?.client?.wallet?.ethProvider || window.ethereum) {
-            const provider = resolvedContext?.client?.wallet?.ethProvider || window.ethereum
-            try {
-              const connected = await window.W3.finalise(provider)
-              if (connected) {
-                console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
-              }
-            } catch(walletErr) {
-              console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
-            }
+      // If the Mini App context exposes a wallet provider, use it directly
+      if (context?.client?.wallet?.ethProvider || window.ethereum) {
+        const provider = context?.client?.wallet?.ethProvider || window.ethereum
+        try {
+          const connected = await window.W3.finalise(provider)
+          if (connected) {
+            console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
           }
+        } catch(walletErr) {
+          console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
         }
       }
-    } catch(e) {
-      console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
     }
+  } catch(e) {
+    console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
   }
 
   document.getElementById('w3-btn-base')?.addEventListener('click', async ()=>{
@@ -2409,8 +2326,14 @@ class GameScene extends Phaser.Scene {
       submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
     }
     
-    // Check if mini app mode
-    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    // Check if mini app mode - also check localStorage
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    if (!isMiniApp) {
+      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+      if (savedMiniApp === 'true') {
+        isMiniApp = true;
+      }
+    }
     
     drawSubmitBtn(window.W3.connected || isMiniApp ? 'idle' : 'no_wallet')
 
@@ -2425,10 +2348,7 @@ class GameScene extends Phaser.Scene {
     // Hit area for submit button
     const submitHit = this.add.rectangle(0, 248, 290, 34).setInteractive({useHandCursor:true})
     submitHit.on('pointerdown', async () => {
-      // Re-check mini app mode on click (in case detection completed after game over)
-      const currentIsMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-      
-      if (!window.W3.connected && !currentIsMiniApp) {
+      if (!window.W3.connected && !isMiniApp) {
         // Try to connect now
         submitBtnTxt.setText('⏳  Connecting wallet...')
         drawSubmitBtn('submitting')
@@ -2440,9 +2360,8 @@ class GameScene extends Phaser.Scene {
         }
       }
       
-      // Different text for mini app vs website (use current state)
-      const miniAppMode = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-      if (miniAppMode) {
+      // Different text for mini app vs website
+      if (isMiniApp) {
         submitBtnTxt.setText('⏳  Saving locally...')
       } else {
         submitBtnTxt.setText('⏳  Submitting to Base...')
@@ -3450,7 +3369,13 @@ function showLeaderboardPage(scene) {
 
   const rankColors = ['#fbbf24','#9ca3af','#b45309']
   const rankEmoji = ['🥇','🥈','🥉']
-  const isMiniApp = window.W3.miniAppMode;
+  let isMiniApp = window.W3.miniAppMode;
+  if (!isMiniApp) {
+    const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+    if (savedMiniApp === 'true') {
+      isMiniApp = true;
+    }
+  }
   const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
 
   function renderRows(scores) {
@@ -3602,105 +3527,5 @@ function initGame(){
 }
 initGame()
 </script>
-
-<!-- ===== CRAZY RUNNER FARCASTER FIX PATCH ===== -->
-<script>
-(async function(){
-
-window.CRAZY_SERVER = "https://crazyrunner-leaderboard.vercel.app"; // change later if you deploy server
-
-async function getFarcasterUser(){
-  try{
-    if(!window.__farcasterSdk__) return null;
-    const ctx = await window.__farcasterSdk__.context;
-    if(ctx && ctx.user){
-      window.W3.miniAppMode = true;
-      window.W3.farcasterUser = ctx.user;
-      return ctx.user;
-    }
-  }catch(e){}
-  return null;
-}
-
-async function saveFarcasterScore(score){
-
-  const user = await getFarcasterUser();
-  if(!user) return;
-
-  try{
-
-    await fetch(window.CRAZY_SERVER + "/submit-fc-score",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        fid:user.fid,
-        username:user.username,
-        pfp:user.pfpUrl,
-        score:score
-      })
-    });
-
-    console.log("Farcaster score saved");
-
-  }catch(e){
-    console.log("Server save failed, fallback local");
-
-    let scores = JSON.parse(localStorage.getItem("crazy_fc_scores")||"[]");
-    const existing = scores.find(s=>s.fid===user.fid);
-
-    if(existing){
-      if(score>existing.score) existing.score=score;
-    }else{
-      scores.push({
-        fid:user.fid,
-        username:user.username,
-        pfp:user.pfpUrl,
-        score:score
-      });
-    }
-
-    localStorage.setItem("crazy_fc_scores",JSON.stringify(scores));
-  }
-}
-
-window.saveScoreUniversal = async function(score){
-
-  const user = await getFarcasterUser();
-
-  if(user){
-    await saveFarcasterScore(score);
-    return;
-  }
-
-  if(window.submitScore){
-    return window.submitScore(score);
-  }
-
-};
-
-window.loadUnifiedLeaderboard = async function(){
-
-  try{
-
-    const r = await fetch(window.CRAZY_SERVER + "/leaderboard");
-    const serverScores = await r.json();
-    return serverScores;
-
-  }catch(e){
-
-    let local = JSON.parse(localStorage.getItem("crazy_fc_scores")||"[]");
-
-    return local.sort((a,b)=>b.score-a.score);
-
-  }
-
-};
-
-console.log("Crazy Runner Farcaster patch loaded");
-
-})();
-</script>
-<!-- ===== END PATCH ===== -->
-
 </body>
 </html>
