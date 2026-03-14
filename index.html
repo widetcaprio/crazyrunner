@@ -1066,10 +1066,15 @@ async function detectMiniAppMode() {
     console.log('[DEBUG] detectMiniAppMode context:', context);
     if (context?.user) {
       window.W3.miniAppMode = true;
+      // Store all user data including potential pfp fields
       window.W3.farcasterUser = context.user;
       window.W3.connected = true;
       window.W3.connectedVia = 'farcaster';
-      console.log('[DEBUG] Mini app detected! User:', context.user.username);
+      console.log('[DEBUG] Mini app detected! User:', context.user);
+      console.log('[DEBUG] User keys:', Object.keys(context.user));
+      // Check for pfp in different possible locations
+      const possiblePfp = context.user.pfpUrl || context.user.pfp || context.user.avatar || context.user.profileImage || context.user.profilePicture;
+      console.log('[DEBUG] Possible PFP:', possiblePfp);
       return true;
     } else {
       console.log('[DEBUG] No user in context');
@@ -1206,8 +1211,10 @@ window.W3 = {
     // MINI APP MODE: Save locally, don't submit to blockchain
     if (window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
-      const pfpUrl = window.W3.farcasterUser.pfpUrl;
+      // Check multiple possible pfp field names
+      const pfpUrl = window.W3.farcasterUser.pfpUrl || window.W3.farcasterUser.pfp || window.W3.farcasterUser.avatar || window.W3.farcasterUser.profileImage || window.W3.farcasterUser.profilePicture;
       console.log('[DEBUG] Saving locally, username:', username, 'pfpUrl:', pfpUrl);
+      console.log('[DEBUG] full user object:', window.W3.farcasterUser);
       saveLocalScore(username, pfpUrl, score);
       console.log('[DEBUG] Scores after save:', window.W3.localScores);
       
@@ -1290,11 +1297,13 @@ window.W3 = {
 
     // MINI APP MODE: Show local scores (even if empty - will show user's saved score)
     if (isMiniApp) {
+      console.log('[DEBUG] Loading local scores for leaderboard:', window.W3.localScores);
       scores = window.W3.localScores.slice(0, 10).map(s => ({
         addr: s.username,
         score: s.score,
         pfpUrl: s.pfpUrl
       }));
+      console.log('[DEBUG] Mapped scores for display:', scores);
       
       // If no scores yet but we have a user, still show empty state message
       if (scores.length === 0) {
@@ -3387,20 +3396,24 @@ function showLeaderboardPage(scene) {
       <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
         No scores yet — be the first to play! 🎮
       </div>`
-    return scores.map((s,i)=>`
+    return scores.map((s,i)=>{
+      const pfpImg = s.pfpUrl ? `<img src="${s.pfpUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,0.2);" onerror="this.style.display='none'" alt="${s.addr}">` : '';
+      const isYou = currentUser && s.addr === currentUser;
+      return `
       <div style="
         display:flex; align-items:center; gap:14px;
         padding:12px 16px; border-radius:12px; margin-bottom:8px;
         background:rgba(255,255,255,0.04);
-        border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
+        border:1px solid ${isYou?'rgba(0,82,255,0.4)':(i<3?'0.12':'0.05')};
       ">
         <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
           ${i<3?rankEmoji[i]:'#'+(i+1)}
         </div>
-        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
+        ${pfpImg}
+        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}${isYou?' <span style="color:#4d9fff">(you)</span>':''}</div>
         <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
       </div>
-    `).join('')
+    `}).join('')
   }
 
   const page = document.createElement('div')
