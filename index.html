@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Crazy Runner</title>
 
   <!-- ── Open Graph meta tags ── -->
@@ -33,8 +35,10 @@
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
-    body{margin:0;padding:0;overflow:hidden;display:flex;justify-content:center;align-items:flex-end;min-height:100vh;background:#000}
-    canvas{display:block}
+    html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;background:#000}
+    body{display:flex;justify-content:center;align-items:center}
+    canvas{display:block;width:auto;height:100%;max-width:100%}
+    #fc-user,#w3-connected-bar,#w3-leaderboard,#lb-toggle-btn,#w3-blur-overlay{z-index:9999}
   </style>
 </head>
 <body>
@@ -904,6 +908,14 @@ console.log('[ASSETS] All generated')
     font-size: 13px;
   }
   .lb-entry.you { background: rgba(0,82,255,0.15); border-color: rgba(0,82,255,0.3); }
+  .lb-pfp {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    flex-shrink: 0;
+  }
   .lb-rank { width: 20px; text-align: center; font-weight: 700; color: rgba(255,255,255,0.4); font-size: 12px; }
   .lb-rank.gold   { color: #fbbf24; }
   .lb-rank.silver { color: #9ca3af; }
@@ -1019,25 +1031,35 @@ function loadLocalScores() {
     const stored = localStorage.getItem(window.W3.localScoresKey);
     if (stored) {
       window.W3.localScores = JSON.parse(stored);
+      console.log('[LoadScores] Loaded from storage:', window.W3.localScores.length, 'scores');
+    } else {
+      window.W3.localScores = [];
+      console.log('[LoadScores] No stored scores');
     }
-  } catch(e) { window.W3.localScores = []; }
+  } catch(e) { 
+    window.W3.localScores = []; 
+    console.log('[LoadScores] Error loading:', e);
+  }
   return window.W3.localScores;
 }
 
 // Save score locally (for mini app)
 function saveLocalScore(username, pfpUrl, score) {
+  console.log('[SaveScore] Saving - username:', username, 'pfpUrl:', pfpUrl, 'score:', score);
   const scores = loadLocalScores();
   const existingIdx = scores.findIndex(s => s.username === username);
   if (existingIdx >= 0) {
     if (score > scores[existingIdx].score) {
       scores[existingIdx].score = score;
       scores[existingIdx].pfpUrl = pfpUrl;
+      scores[existingIdx].username = username;
     }
   } else {
     scores.push({ username, pfpUrl, score, timestamp: Date.now() });
   }
   scores.sort((a, b) => b.score - a.score);
-  window.W3.localScores = scores.slice(0, 100); // Keep top 100
+  window.W3.localScores = scores.slice(0, 100);
+  console.log('[SaveScore] Updated scores:', window.W3.localScores);
   try {
     localStorage.setItem(window.W3.localScoresKey, JSON.stringify(window.W3.localScores));
   } catch(e) {}
@@ -1046,21 +1068,27 @@ function saveLocalScore(username, pfpUrl, score) {
 
 // Check if running inside Warpcast/Farcaster
 async function detectMiniAppMode() {
+  console.log('[MiniApp] Starting detection...');
   try {
     const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+    console.log('[MiniApp] SDK imported');
     await sdk.actions.ready();
+    console.log('[MiniApp] SDK ready');
     const context = await sdk.context;
-    console.log('[DEBUG] detectMiniAppMode context:', context);
+    console.log('[MiniApp] Context:', context);
     if (context?.user) {
       window.W3.miniAppMode = true;
       window.W3.farcasterUser = context.user;
       window.W3.connected = true;
       window.W3.connectedVia = 'farcaster';
-      console.log('[DEBUG] Mini app detected! User:', context.user.username);
+      console.log('[MiniApp] Detected user:', context.user.username || context.user.displayName);
+      console.log('[MiniApp] User pfp:', context.user.pfpUrl || context.user.pfp);
       return true;
+    } else {
+      console.log('[MiniApp] No user in context');
     }
   } catch(e) {
-    console.log('[DEBUG] detectMiniAppMode error:', e.message);
+    console.log('[MiniApp] Not in mini app environment:', e.message);
   }
   window.W3.miniAppMode = false;
   return false;
@@ -1170,34 +1198,54 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
-    // Check if mini app mode using stored user data
-    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-    console.log('[DEBUG] submitScore called, isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
-    
-    // If not detected yet, try to get from existing SDK
-    if (!isMiniApp && window.__farcasterSdk__) {
+    // Try to detect mini app context if not already done
+    if (!window.W3.miniAppMode && !window.W3.farcasterUser && window.__farcasterSdk__) {
       try {
         const context = await window.__farcasterSdk__.context;
         if (context?.user) {
           window.W3.miniAppMode = true;
           window.W3.farcasterUser = context.user;
           window.W3.connected = true;
-          console.log('[DEBUG] Detected from existing SDK, user:', context.user.username);
         }
-      } catch(e) { console.log('[DEBUG] SDK context error:', e); }
+      } catch(e) { }
     }
     
     // MINI APP MODE: Save locally, don't submit to blockchain
     if (window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
-      const pfpUrl = window.W3.farcasterUser.pfpUrl;
+      const pfpUrl = window.W3.farcasterUser.pfpUrl || window.W3.farcasterUser.pfp || window.W3.farcasterUser.avatar || window.W3.farcasterUser.profileImage || window.W3.farcasterUser.profilePicture;
       saveLocalScore(username, pfpUrl, score);
-      window.W3.loadLeaderboard();
-      console.log('[W3] Score saved locally for:', username, 'Score:', score);
+      
+      // Force reload and update the leaderboard UI immediately
+      loadLocalScores();
+      this.loadLeaderboard();
+      
+      // Also update the leaderboard panel in the DOM
+      const container = document.getElementById('lb-entries');
+      if (container) {
+        const scores = window.W3.localScores.slice(0, 10).map(s => ({
+          addr: s.username || s.displayName || s.name || 'Anonymous',
+          score: s.score,
+          pfpUrl: s.pfpUrl
+        }));
+        const medals = ['gold','silver','bronze'];
+        const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
+        container.innerHTML = scores.map((s,i)=>{
+          const isYou = currentUser && s.addr === currentUser;
+          const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
+          const displayName = s.addr || 'Anonymous';
+          return `<div class="lb-entry${isYou?' you':''}">
+            <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+            ${pfpImg}
+            <div class="lb-addr">${displayName}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
+            <div class="lb-score">${s.score.toLocaleString()}</div>
+          </div>`
+        }).join('');
+      }
+      
       return 'local-score';
     }
 
-    console.log('[DEBUG] Not mini app mode, using wallet connection');
     // Normal mode: requires wallet connection
     if (!this.connected) return false
     if (!LEADERBOARD_ADDRESS) {
@@ -1241,18 +1289,22 @@ window.W3 = {
     // Check if mini app mode using stored user data
     const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
 
-    // Reload local scores from storage first
-    if (isMiniApp) {
-      loadLocalScores();
-    }
+    // Always reload local scores from storage
+    loadLocalScores();
 
-    // MINI APP MODE: Show local scores
-    if (isMiniApp && window.W3.localScores.length > 0) {
+    // MINI APP MODE: Show local scores (even if empty - will show user's saved score)
+    if (isMiniApp) {
       scores = window.W3.localScores.slice(0, 10).map(s => ({
-        addr: s.username,
+        addr: s.username || s.displayName || s.name || 'Anonymous',
         score: s.score,
         pfpUrl: s.pfpUrl
       }));
+      
+      // If no scores yet but we have a user, still show empty state message
+      if (scores.length === 0) {
+        container.innerHTML = '<div class="lb-empty">No scores yet — be the first!</div>';
+        return;
+      }
     } else if (!LEADERBOARD_ADDRESS) {
       scores = this._mockScores || MOCK_SCORES
     } else {
@@ -1277,9 +1329,12 @@ window.W3 = {
     const currentAddr = window.W3.address ? window.W3.shortAddr(window.W3.address) : null;
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
       const isYou = (currentUser && s.addr === currentUser) || (currentAddr && s.addr === currentAddr);
+      const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
+      const displayName = s.addr || 'Anonymous';
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
-        <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
+        ${pfpImg}
+        <div class="lb-addr">${displayName}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
         <div class="lb-score">${s.score.toLocaleString()}</div>
       </div>`
     }).join('')
@@ -3337,20 +3392,25 @@ function showLeaderboardPage(scene) {
       <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
         No scores yet — be the first to play! 🎮
       </div>`
-    return scores.map((s,i)=>`
+    return scores.map((s,i)=>{
+      const pfpImg = s.pfpUrl ? `<img src="${s.pfpUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,0.2);" onerror="this.style.display='none'" alt="${s.addr || 'user'}">` : '';
+      const isYou = currentUser && s.addr === currentUser;
+      const displayName = s.addr || s.username || s.displayName || 'Anonymous';
+      return `
       <div style="
         display:flex; align-items:center; gap:14px;
         padding:12px 16px; border-radius:12px; margin-bottom:8px;
         background:rgba(255,255,255,0.04);
-        border:1px solid rgba(255,255,255,${i<3?'0.12':'0.05'});
+        border:1px solid ${isYou?'rgba(0,82,255,0.4)':(i<3?'0.12':'0.05')};
       ">
         <div style="width:32px;text-align:center;font-size:${i<3?'22px':'14px'};font-weight:800;color:${rankColors[i]||'rgba(255,255,255,0.3)'}">
           ${i<3?rankEmoji[i]:'#'+(i+1)}
         </div>
-        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}</div>
+        ${pfpImg}
+        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${displayName}${isYou?' <span style="color:#4d9fff">(you)</span>':''}</div>
         <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
       </div>
-    `).join('')
+    `}).join('')
   }
 
   const page = document.createElement('div')
