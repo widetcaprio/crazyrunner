@@ -1015,9 +1015,6 @@ window.getPlayerLabel = function(address) {
 
 // Load local scores from localStorage
 function loadLocalScores() {
-  if (!window.W3.localScores) {
-    window.W3.localScores = [];
-  }
   try {
     const stored = localStorage.getItem(window.W3.localScoresKey);
     if (stored) {
@@ -1029,11 +1026,7 @@ function loadLocalScores() {
 
 // Save score locally (for mini app)
 function saveLocalScore(username, pfpUrl, score) {
-  // Initialize if needed
-  if (!window.W3.localScores) {
-    window.W3.localScores = [];
-  }
-  const scores = window.W3.localScores.slice(); // Make a copy
+  const scores = loadLocalScores();
   const existingIdx = scores.findIndex(s => s.username === username);
   if (existingIdx >= 0) {
     if (score > scores[existingIdx].score) {
@@ -1288,9 +1281,8 @@ window.W3 = {
     }
 
     // MINI APP MODE: Show local scores
-    const localScores = window.W3.localScores || [];
-    if (isMiniApp && localScores.length > 0) {
-      scores = localScores.slice(0, 10).map(s => ({
+    if (isMiniApp && window.W3.localScores.length > 0) {
+      scores = window.W3.localScores.slice(0, 10).map(s => ({
         addr: s.username,
         score: s.score,
         pfpUrl: s.pfpUrl
