@@ -986,6 +986,111 @@ const LEADERBOARD_ABI = [
 ]
 const LEADERBOARD_ADDRESS = "0x3ff2fad90059Cd49F175EA7BB8f777BDae7fd853"  // Base Mainnet
 
+// ═══════════════════════════════════════════════════════════════
+// MINI APP MODE DETECTION
+// ═══════════════════════════════════════════════════════════════
+window.W3 = window.W3 || {};
+window.W3.miniAppMode = false;
+window.W3.farcasterUser = null;
+window.W3.localScores = [];
+window.W3.localScoresKey = 'crazyrunner_local_scores';
+
+// Helper to display username or address on leaderboard
+window.getPlayerLabel = function(address) {
+  if (!address) return '';
+  // If mini app mode, just return the short address
+  if (window.W3.miniAppMode) {
+    return address.slice(0, 6) + '...' + address.slice(-4);
+  }
+  // Check if we have a mapped farcaster profile for this address
+  const addrMapKey = 'crazyrunner_addr_map';
+  try {
+    const addrMap = JSON.parse(localStorage.getItem(addrMapKey)) || {};
+    const p = addrMap[address.toLowerCase()];
+    if (p) return p.username ? '@' + p.username : (p.displayName || 'Farcaster user');
+  } catch(e) {}
+  // Fallback to short address
+  try { return address.slice(0, 6) + '...' + address.slice(-4); } catch(e) { return address; }
+};
+
+// Load local scores from localStorage
+function loadLocalScores() {
+  if (!window.W3.localScores) {
+    window.W3.localScores = [];
+  }
+  try {
+    const stored = localStorage.getItem(window.W3.localScoresKey);
+    if (stored) {
+      window.W3.localScores = JSON.parse(stored);
+    }
+  } catch(e) { window.W3.localScores = []; }
+  return window.W3.localScores;
+}
+
+// Save score locally (for mini app)
+function saveLocalScore(username, pfpUrl, score) {
+  // Initialize if needed
+  if (!window.W3.localScores) {
+    window.W3.localScores = [];
+  }
+  const scores = window.W3.localScores.slice(); // Make a copy
+  const existingIdx = scores.findIndex(s => s.username === username);
+  if (existingIdx >= 0) {
+    if (score > scores[existingIdx].score) {
+      scores[existingIdx].score = score;
+      scores[existingIdx].pfpUrl = pfpUrl;
+    }
+  } else {
+    scores.push({ username, pfpUrl, score, timestamp: Date.now() });
+  }
+  scores.sort((a, b) => b.score - a.score);
+  window.W3.localScores = scores.slice(0, 100); // Keep top 100
+  try {
+    localStorage.setItem(window.W3.localScoresKey, JSON.stringify(window.W3.localScores));
+  } catch(e) {}
+  return window.W3.localScores;
+}
+
+// Check if running inside Warpcast/Farcaster
+async function detectMiniAppMode() {
+  // First check localStorage (persists across pages)
+  const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+  const savedUser = localStorage.getItem('crazy_farcaster_user');
+  if (savedMiniApp === 'true' && savedUser) {
+    try {
+      window.W3.farcasterUser = JSON.parse(savedUser);
+      window.W3.miniAppMode = true;
+      window.W3.connected = true;
+      console.log('[DEBUG] Restored from localStorage, user:', window.W3.farcasterUser.username);
+      return true;
+    } catch(e) {}
+  }
+  
+  try {
+    const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+    await sdk.actions.ready();
+    const context = await sdk.context;
+    console.log('[DEBUG] detectMiniAppMode context:', context);
+    if (context?.user) {
+      window.W3.miniAppMode = true;
+      window.W3.farcasterUser = context.user;
+      window.W3.connected = true;
+      window.W3.connectedVia = 'farcaster';
+      
+      // Save to localStorage for persistence
+      localStorage.setItem('crazy_miniapp_mode', 'true');
+      localStorage.setItem('crazy_farcaster_user', JSON.stringify(context.user));
+      
+      console.log('[DEBUG] Mini app detected! User:', context.user.username);
+      return true;
+    }
+  } catch(e) {
+    console.log('[DEBUG] detectMiniAppMode error:', e.message);
+  }
+  window.W3.miniAppMode = false;
+  return false;
+}
+
 // ── Leaderboard mock data (shown until contract is deployed) ────
 const MOCK_SCORES = [
   { addr: '0xaBc1...9F3d', score: 18420 },
@@ -995,12 +1100,22 @@ const MOCK_SCORES = [
   { addr: '0x9999...0001', score: 9340  },
 ]
 
+// Preserve mini app settings if already set
+const _prevMiniApp = window.W3.miniAppMode;
+const _prevUser = window.W3.farcasterUser;
+const _prevScores = window.W3.localScores;
+const _prevKey = window.W3.localScoresKey;
+
 window.W3 = {
   provider: null,
   signer: null,
   address: null,
   connected: false,
   submitting: false,
+  miniAppMode: _prevMiniApp || false,
+  farcasterUser: _prevUser || null,
+  localScores: _prevScores || [],
+  localScoresKey: _prevKey || 'crazyrunner_local_scores',
 
   shortAddr(a){ return a ? a.slice(0,6)+'...'+a.slice(-4) : '' },
 
@@ -1090,11 +1205,43 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
+    // Check if mini app mode - check localStorage as fallback
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    
+    // If not detected yet, check localStorage
+    if (!isMiniApp) {
+      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+      const savedUser = localStorage.getItem('crazy_farcaster_user');
+      if (savedMiniApp === 'true' && savedUser) {
+        try {
+          window.W3.farcasterUser = JSON.parse(savedUser);
+          window.W3.miniAppMode = true;
+          window.W3.connected = true;
+          isMiniApp = true;
+          console.log('[DEBUG] Restored mini app user from localStorage:', window.W3.farcasterUser.username);
+        } catch(e) {}
+      }
+    }
+    
+    console.log('[DEBUG] submitScore isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
+    
+    // MINI APP MODE: Save locally
+    if (isMiniApp && window.W3.farcasterUser) {
+      const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
+      const pfpUrl = window.W3.farcasterUser.pfpUrl;
+      saveLocalScore(username, pfpUrl, score);
+      window.W3.loadLeaderboard();
+      console.log('[W3] Score saved locally for:', username, 'Score:', score);
+      return 'local-score';
+    }
+
+    console.log('[DEBUG] Not mini app mode, using wallet connection');
+    // Normal mode: requires wallet connection
     if (!this.connected) return false
     if (!LEADERBOARD_ADDRESS) {
       // Contract not deployed — simulate for now
       this._addMockScore(this.address, score)
-      this.loadLeaderboard()
+      window.W3.loadLeaderboard()
       return 'mock-tx'
     }
     if (this.submitting) return false
@@ -1104,7 +1251,7 @@ window.W3 = {
       const tx = await c.submitScore(score)
       const receipt = await tx.wait()
       this.submitting = false
-      this.loadLeaderboard()
+      window.W3.loadLeaderboard()
       return tx.hash
     } catch(e) {
       this.submitting = false
@@ -1129,21 +1276,59 @@ window.W3 = {
     if(!container) return
     let scores = []
 
-    if(!LEADERBOARD_ADDRESS) {
+    // Check if mini app mode - check localStorage as fallback
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    
+    // If not detected yet, check localStorage
+    if (!isMiniApp) {
+      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+      const savedUser = localStorage.getItem('crazy_farcaster_user');
+      if (savedMiniApp === 'true' && savedUser) {
+        try {
+          window.W3.farcasterUser = JSON.parse(savedUser);
+          window.W3.miniAppMode = true;
+          isMiniApp = true;
+        } catch(e) {}
+      }
+    }
+
+    // Reload local scores from storage first
+    if (isMiniApp) {
+      loadLocalScores();
+    }
+
+    // MINI APP MODE: Show local scores
+    const localScores = window.W3.localScores || [];
+    if (isMiniApp && localScores.length > 0) {
+      scores = localScores.slice(0, 10).map(s => ({
+        addr: s.username,
+        score: s.score,
+        pfpUrl: s.pfpUrl
+      }));
+    } else if (!LEADERBOARD_ADDRESS) {
       scores = this._mockScores || MOCK_SCORES
     } else {
       try {
         const c = new ethers.Contract(LEADERBOARD_ADDRESS, LEADERBOARD_ABI, this.provider)
         const raw = await c.getTopScores()
-        scores = raw.map(x=>({addr:getPlayerLabel(x.player), score:Number(x.score)}))
-                    .sort((a,b)=>b.score-a.score).slice(0,10)
+        // Deduplicate - keep only highest score per address
+        const addrScores = {};
+        raw.forEach(x => {
+          const addr = x.player;
+          const sc = Number(x.score);
+          if (!addrScores[addr] || sc > addrScores[addr].score) {
+            addrScores[addr] = { addr: getPlayerLabel(addr), score: sc };
+          }
+        });
+        scores = Object.values(addrScores).sort((a,b)=>b.score-a.score).slice(0,10)
       } catch(e) { scores = MOCK_SCORES }
     }
 
     const medals = ['gold','silver','bronze']
+    const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
     const currentAddr = window.W3.address ? window.W3.shortAddr(window.W3.address) : null;
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
-      const isYou = currentAddr && s.addr === currentAddr;
+      const isYou = (currentUser && s.addr === currentUser) || (currentAddr && s.addr === currentAddr);
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
         <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
@@ -1157,7 +1342,7 @@ window.W3 = {
 const PRIVY_APP_ID = 'cmmg9fbg800jv0cl86x57h6mh'
 
 // ── Wire up buttons ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', ()=>{
+document.addEventListener('DOMContentLoaded', async ()=>{
   const setLoading = (loading) => {
     const btn = document.getElementById('w3-btn-base')
     if(btn) btn.disabled = loading
@@ -1165,35 +1350,74 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(t) t.innerHTML = loading ? '<span class="w3-spinner"></span>' : 'Connect Wallet'
   }
 
+  // ── Detect mini app mode FIRST ─────────────────────────────────
+  const isMiniApp = await detectMiniAppMode();
+  loadLocalScores();
+
+  if (isMiniApp && window.W3.farcasterUser) {
+    console.log('[W3] Running in mini app mode, user:', window.W3.farcasterUser.username);
+    
+    // Show user profile in top bar
+    const fcUser = document.getElementById('fc-user');
+    const fcPfp = document.getElementById('fc-pfp');
+    const fcName = document.getElementById('fc-name');
+    if (fcUser) {
+      fcUser.style.display = 'flex';
+      if (fcPfp && window.W3.farcasterUser.pfpUrl) {
+        fcPfp.src = window.W3.farcasterUser.pfpUrl;
+      }
+      if (fcName) {
+        fcName.textContent = '@' + (window.W3.farcasterUser.username || window.W3.farcasterUser.displayName);
+      }
+    }
+
+    // Hide wallet connect overlay
+    const ov = document.getElementById('w3-blur-overlay');
+    if (ov) {
+      ov.style.opacity = '0';
+      setTimeout(() => ov.style.display = 'none', 500);
+    }
+
+    // Hide connect button
+    const btn = document.getElementById('w3-btn-base');
+    if (btn) btn.style.display = 'none';
+
+    // Hide connected bar (silver card at top right) - we already have profile at top left
+    const bar = document.getElementById('w3-connected-bar');
+    if (bar) bar.style.display = 'none';
+
+    // Load local leaderboard
+    window.W3.loadLeaderboard();
+    return; // Don't do wallet connect flow
+  }
+
+  // ── Normal website mode: setup wallet connect ──────────────────
   // Farcode Mini App SDK: call ready() FIRST, then auto-connect
-  ;(async () => {
-    try {
-      const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk')
-      await sdk.actions.ready()
-      console.log('[Farcaster] sdk.actions.ready() called ✅')
+  try {
+    const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk')
+    await sdk.actions.ready()
+    console.log('[Farcaster] sdk.actions.ready() called ✅')
 
-      const context = await sdk.context
+    const context = await sdk.context
+    if (context?.user) {
+      console.log('[Farcaster] Running inside Warpcast, user:', context.user.username)
 
-      if (context?.user) {
-        console.log('[Farcaster] Running inside Warpcast, user:', context.user.username)
-
-        // If the Mini App context exposes a wallet provider, use it directly
-        if (context?.client?.wallet?.ethProvider || window.ethereum) {
-          const provider = context?.client?.wallet?.ethProvider || window.ethereum
-          try {
-            const connected = await window.W3.finalise(provider)
-            if (connected) {
-              console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
-            }
-          } catch(walletErr) {
-            console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
+      // If the Mini App context exposes a wallet provider, use it directly
+      if (context?.client?.wallet?.ethProvider || window.ethereum) {
+        const provider = context?.client?.wallet?.ethProvider || window.ethereum
+        try {
+          const connected = await window.W3.finalise(provider)
+          if (connected) {
+            console.log('[Farcaster] Auto-connected wallet:', window.W3.address)
           }
+        } catch(walletErr) {
+          console.log('[Farcaster] Wallet auto-connect skipped:', walletErr.message)
         }
       }
-    } catch(e) {
-      console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
     }
-  })()
+  } catch(e) {
+    console.log('[Farcaster] SDK not active (normal outside Warpcast):', e.message)
+  }
 
   document.getElementById('w3-btn-base')?.addEventListener('click', async ()=>{
     setLoading(true)
@@ -2112,23 +2336,37 @@ class GameScene extends Phaser.Scene {
         submitting:  [0xcc8800, 0xffaa00],
         done:        [0x16a34a, 0x22c55e],
         no_contract: [0xcc5500, 0xff8800],
+        local:       [0x7c3aed, 0xa855f7],  // purple for mini app
       }
       const [fill, border] = colors[state] || colors.idle
       submitBtnGfx.fillStyle(fill, 1);        submitBtnGfx.fillRoundedRect(-145,232,290,34,17)
       submitBtnGfx.lineStyle(2, border, 1);   submitBtnGfx.strokeRoundedRect(-145,232,290,34,17)
       submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
     }
-    drawSubmitBtn(window.W3.connected ? 'idle' : 'no_wallet')
+    
+    // Check if mini app mode - also check localStorage
+    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    if (!isMiniApp) {
+      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+      if (savedMiniApp === 'true') {
+        isMiniApp = true;
+      }
+    }
+    
+    drawSubmitBtn(window.W3.connected || isMiniApp ? 'idle' : 'no_wallet')
 
-    if (!window.W3.connected) {
+    if (!window.W3.connected && !isMiniApp) {
       submitBtnTxt.setText('🔗  Connect Wallet First')
       submitBtnTxt.setColor('#aaaaaa')
+    } else if (isMiniApp) {
+      submitBtnTxt.setText('💾  Save Score (Local)')
+      submitBtnTxt.setColor('#ffffff')
     }
 
     // Hit area for submit button
     const submitHit = this.add.rectangle(0, 248, 290, 34).setInteractive({useHandCursor:true})
     submitHit.on('pointerdown', async () => {
-      if (!window.W3.connected) {
+      if (!window.W3.connected && !isMiniApp) {
         // Try to connect now
         submitBtnTxt.setText('⏳  Connecting wallet...')
         drawSubmitBtn('submitting')
@@ -2139,12 +2377,25 @@ class GameScene extends Phaser.Scene {
           return
         }
       }
-      submitBtnTxt.setText('⏳  Submitting to Base...')
+      
+      // Different text for mini app vs website
+      if (isMiniApp) {
+        submitBtnTxt.setText('⏳  Saving locally...')
+      } else {
+        submitBtnTxt.setText('⏳  Submitting to Base...')
+      }
       drawSubmitBtn('submitting')
+      
       const txHash = await window.W3.submitScore(this.score)
+      
       if (txHash) {
-        submitBtnTxt.setText('✅  Score saved on Base!')
-        drawSubmitBtn('done')
+        if (txHash === 'local-score') {
+          submitBtnTxt.setText('✅  Score saved locally!')
+          drawSubmitBtn('local')
+        } else {
+          submitBtnTxt.setText('✅  Score saved on Base!')
+          drawSubmitBtn('done')
+        }
         submitHit.disableInteractive()
       } else if (!LEADERBOARD_ADDRESS) {
         submitBtnTxt.setText('⚠️  Deploy contract first')
@@ -2647,6 +2898,11 @@ class GameScene extends Phaser.Scene {
       homeHit.on('pointerout',()=>{ homeBg.clear(); homeBg.fillStyle(0x1a3a6b,1); homeBg.fillRect(0,H-btnH,W/2,btnH); homeBg.fillStyle(0x2563eb,1); homeBg.fillRect(0,H-btnH,W/2,3) })
       homeHit.on('pointerdown',()=>{
         SFX.btnClick()
+        // Show profile when going back to menu
+        const fcUser = document.getElementById('fc-user');
+        if (fcUser && window.W3.miniAppMode) fcUser.style.display = 'flex';
+        const fcBar = document.getElementById('w3-connected-bar');
+        if (fcBar && window.W3.miniAppMode) fcBar.style.display = 'flex';
         this.cameras.main.fadeOut(220,0,0,0)
         this.time.delayedCall(220,()=>this.scene.start('StartScene'))
       })
@@ -3131,8 +3387,14 @@ function showLeaderboardPage(scene) {
 
   const rankColors = ['#fbbf24','#9ca3af','#b45309']
   const rankEmoji = ['🥇','🥈','🥉']
-
-  function renderRows(scores) {
+  let isMiniApp = window.W3.miniAppMode;
+  if (!isMiniApp) {
+    const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
+    if (savedMiniApp === 'true') {
+      isMiniApp = true;
+    }
+  }
+  const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
 
   function renderRows(scores) {
     if(!scores || scores.length === 0) return `
@@ -3164,25 +3426,28 @@ function showLeaderboardPage(scene) {
     font-family:'Syne',sans-serif;overflow-y:auto;padding:24px 16px 100px;
   `
   
+  const headerText = isMiniApp ? 'Your Scores' : 'Top players on Base';
+  const noticeText = isMiniApp ? '📱 Scores saved locally on this device' : '🔵 Live scores from Base blockchain';
+  
   page.innerHTML = `
     <div style="width:100%;max-width:420px;">
       <!-- Header -->
       <div style="text-align:center;margin-bottom:28px;">
         <div style="font-size:36px;margin-bottom:8px;">🏆</div>
         <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">Leaderboard</div>
-        <div style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">Top players on Base</div>
+        <div style="font-size:13px;color:#64748b;margin-top:4px;font-family:'DM Sans',sans-serif">${headerText}</div>
       </div>
 
       <!-- Scores -->
       <div id="lb-rows" style="margin-bottom:24px;">
         <div style="text-align:center;color:rgba(255,255,255,0.3);padding:40px 0;font-family:'DM Sans',sans-serif;">
-          Loading scores from Base... 🔵
+          ${isMiniApp ? 'Loading local scores...' : 'Loading scores from Base... 🔵'}
         </div>
       </div>
 
       <!-- Notice -->
       <div style="text-align:center;font-size:11px;color:rgba(255,255,255,0.2);font-family:'DM Sans',sans-serif;margin-bottom:32px;">
-        🔵 Live scores from Base blockchain
+        ${noticeText}
       </div>
     </div>
 
@@ -3212,10 +3477,19 @@ function showLeaderboardPage(scene) {
   `
   document.body.appendChild(page)
 
-  // Load real scores from contract using public RPC (no wallet needed)
+  // Load scores - local for mini app, on-chain for website
   ;(async ()=>{
     const rowsEl = document.getElementById('lb-rows')
     if(!rowsEl) return
+    
+    // MINI APP MODE: Show local scores
+    if (isMiniApp) {
+      const scores = loadLocalScores().slice(0, 10);
+      rowsEl.innerHTML = renderRows(scores);
+      return;
+    }
+    
+    // Normal mode: fetch from blockchain
     try {
       const RPC = ACTIVE_CHAIN === BASE_CHAIN_ID
         ? 'https://mainnet.base.org'
@@ -3239,6 +3513,11 @@ function showLeaderboardPage(scene) {
   document.getElementById('lb-play-btn').onclick = ()=>{
     page.remove()
     if(canvas) canvas.style.display = ''
+    // Show profile when going back to menu from leaderboard
+    const fcUser = document.getElementById('fc-user');
+    if (fcUser && window.W3.miniAppMode) fcUser.style.display = 'flex';
+    const fcBar = document.getElementById('w3-connected-bar');
+    if (fcBar && window.W3.miniAppMode) fcBar.style.display = 'flex';
     scene.scene.start('StartScene')
   }
   document.getElementById('lb-stay-btn').onclick = ()=>{
