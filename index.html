@@ -1019,6 +1019,8 @@ function loadLocalScores() {
     const stored = localStorage.getItem(window.W3.localScoresKey);
     if (stored) {
       window.W3.localScores = JSON.parse(stored);
+    } else {
+      window.W3.localScores = [];
     }
   } catch(e) { window.W3.localScores = []; }
   return window.W3.localScores;
@@ -1046,9 +1048,12 @@ function saveLocalScore(username, pfpUrl, score) {
 
 // Check if running inside Warpcast/Farcaster
 async function detectMiniAppMode() {
+  console.log('[DEBUG] detectMiniAppMode starting...');
   try {
     const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
+    console.log('[DEBUG] SDK imported successfully');
     await sdk.actions.ready();
+    console.log('[DEBUG] SDK ready');
     const context = await sdk.context;
     console.log('[DEBUG] detectMiniAppMode context:', context);
     if (context?.user) {
@@ -1058,6 +1063,8 @@ async function detectMiniAppMode() {
       window.W3.connectedVia = 'farcaster';
       console.log('[DEBUG] Mini app detected! User:', context.user.username);
       return true;
+    } else {
+      console.log('[DEBUG] No user in context');
     }
   } catch(e) {
     console.log('[DEBUG] detectMiniAppMode error:', e.message);
@@ -1170,14 +1177,15 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
-    // Check if mini app mode using stored user data
-    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-    console.log('[DEBUG] submitScore called, isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
+    console.log('[DEBUG] submitScore called, score:', score);
+    console.log('[DEBUG] window.W3.miniAppMode:', window.W3.miniAppMode);
+    console.log('[DEBUG] window.W3.farcasterUser:', window.W3.farcasterUser);
     
-    // If not detected yet, try to get from existing SDK
-    if (!isMiniApp && window.__farcasterSdk__) {
+    // Try to detect Farcaster context if not already done
+    if (!window.W3.miniAppMode && !window.W3.farcasterUser && window.__farcasterSdk__) {
       try {
         const context = await window.__farcasterSdk__.context;
+        console.log('[DEBUG] SDK context from submitScore:', context);
         if (context?.user) {
           window.W3.miniAppMode = true;
           window.W3.farcasterUser = context.user;
@@ -1191,8 +1199,34 @@ window.W3 = {
     if (window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl;
+      console.log('[DEBUG] Saving locally, username:', username, 'pfpUrl:', pfpUrl);
       saveLocalScore(username, pfpUrl, score);
-      window.W3.loadLeaderboard();
+      console.log('[DEBUG] Scores after save:', window.W3.localScores);
+      
+      // Force reload and update the leaderboard UI immediately
+      loadLocalScores();
+      this.loadLeaderboard();
+      
+      // Also update the leaderboard panel in the DOM
+      const container = document.getElementById('lb-entries');
+      if (container) {
+        const scores = window.W3.localScores.slice(0, 10).map(s => ({
+          addr: s.username,
+          score: s.score,
+          pfpUrl: s.pfpUrl
+        }));
+        const medals = ['gold','silver','bronze'];
+        const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
+        container.innerHTML = scores.map((s,i)=>{
+          const isYou = currentUser && s.addr === currentUser;
+          return `<div class="lb-entry${isYou?' you':''}">
+            <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+            <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
+            <div class="lb-score">${s.score.toLocaleString()}</div>
+          </div>`
+        }).join('');
+      }
+      
       console.log('[W3] Score saved locally for:', username, 'Score:', score);
       return 'local-score';
     }
@@ -1241,18 +1275,22 @@ window.W3 = {
     // Check if mini app mode using stored user data
     const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
 
-    // Reload local scores from storage first
-    if (isMiniApp) {
-      loadLocalScores();
-    }
+    // Always reload local scores from storage
+    loadLocalScores();
 
-    // MINI APP MODE: Show local scores
-    if (isMiniApp && window.W3.localScores.length > 0) {
+    // MINI APP MODE: Show local scores (even if empty - will show user's saved score)
+    if (isMiniApp) {
       scores = window.W3.localScores.slice(0, 10).map(s => ({
         addr: s.username,
         score: s.score,
         pfpUrl: s.pfpUrl
       }));
+      
+      // If no scores yet but we have a user, still show empty state message
+      if (scores.length === 0) {
+        container.innerHTML = '<div class="lb-empty">No scores yet — be the first!</div>';
+        return;
+      }
     } else if (!LEADERBOARD_ADDRESS) {
       scores = this._mockScores || MOCK_SCORES
     } else {
