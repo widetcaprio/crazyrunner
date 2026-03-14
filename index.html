@@ -3481,5 +3481,105 @@ function initGame(){
 }
 initGame()
 </script>
+
+<!-- ===== CRAZY RUNNER FARCASTER FIX PATCH ===== -->
+<script>
+(async function(){
+
+window.CRAZY_SERVER = "https://crazyrunner-leaderboard.vercel.app"; // change later if you deploy server
+
+async function getFarcasterUser(){
+  try{
+    if(!window.__farcasterSdk__) return null;
+    const ctx = await window.__farcasterSdk__.context;
+    if(ctx && ctx.user){
+      window.W3.miniAppMode = true;
+      window.W3.farcasterUser = ctx.user;
+      return ctx.user;
+    }
+  }catch(e){}
+  return null;
+}
+
+async function saveFarcasterScore(score){
+
+  const user = await getFarcasterUser();
+  if(!user) return;
+
+  try{
+
+    await fetch(window.CRAZY_SERVER + "/submit-fc-score",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        fid:user.fid,
+        username:user.username,
+        pfp:user.pfpUrl,
+        score:score
+      })
+    });
+
+    console.log("Farcaster score saved");
+
+  }catch(e){
+    console.log("Server save failed, fallback local");
+
+    let scores = JSON.parse(localStorage.getItem("crazy_fc_scores")||"[]");
+    const existing = scores.find(s=>s.fid===user.fid);
+
+    if(existing){
+      if(score>existing.score) existing.score=score;
+    }else{
+      scores.push({
+        fid:user.fid,
+        username:user.username,
+        pfp:user.pfpUrl,
+        score:score
+      });
+    }
+
+    localStorage.setItem("crazy_fc_scores",JSON.stringify(scores));
+  }
+}
+
+window.saveScoreUniversal = async function(score){
+
+  const user = await getFarcasterUser();
+
+  if(user){
+    await saveFarcasterScore(score);
+    return;
+  }
+
+  if(window.submitScore){
+    return window.submitScore(score);
+  }
+
+};
+
+window.loadUnifiedLeaderboard = async function(){
+
+  try{
+
+    const r = await fetch(window.CRAZY_SERVER + "/leaderboard");
+    const serverScores = await r.json();
+    return serverScores;
+
+  }catch(e){
+
+    let local = JSON.parse(localStorage.getItem("crazy_fc_scores")||"[]");
+
+    return local.sort((a,b)=>b.score-a.score);
+
+  }
+
+};
+
+console.log("Crazy Runner Farcaster patch loaded");
+
+})();
+</script>
+<!-- ===== END PATCH ===== -->
+
 </body>
 </html>
