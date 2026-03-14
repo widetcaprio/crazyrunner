@@ -1042,7 +1042,6 @@ function saveLocalScore(username, pfpUrl, score) {
     if (score > scores[existingIdx].score) {
       scores[existingIdx].score = score;
       scores[existingIdx].pfpUrl = pfpUrl;
-      scores[existingIdx].username = username; // Ensure username is always set
     }
   } else {
     scores.push({ username, pfpUrl, score, timestamp: Date.now() });
@@ -1227,7 +1226,7 @@ window.W3 = {
       const container = document.getElementById('lb-entries');
       if (container) {
         const scores = window.W3.localScores.slice(0, 10).map(s => ({
-          addr: s.username || s.displayName || s.name || 'Anonymous',
+          addr: s.username,
           score: s.score,
           pfpUrl: s.pfpUrl
         }));
@@ -1236,11 +1235,10 @@ window.W3 = {
         container.innerHTML = scores.map((s,i)=>{
           const isYou = currentUser && s.addr === currentUser;
           const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
-          const displayName = s.addr || 'Anonymous';
           return `<div class="lb-entry${isYou?' you':''}">
             <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
             ${pfpImg}
-            <div class="lb-addr">${displayName}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
+            <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
             <div class="lb-score">${s.score.toLocaleString()}</div>
           </div>`
         }).join('');
@@ -1301,7 +1299,7 @@ window.W3 = {
     if (isMiniApp) {
       console.log('[DEBUG] Loading local scores for leaderboard:', window.W3.localScores);
       scores = window.W3.localScores.slice(0, 10).map(s => ({
-        addr: s.username || s.displayName || s.name || 'Anonymous',
+        addr: s.username,
         score: s.score,
         pfpUrl: s.pfpUrl
       }));
@@ -1337,11 +1335,10 @@ window.W3 = {
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
       const isYou = (currentUser && s.addr === currentUser) || (currentAddr && s.addr === currentAddr);
       const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
-      const displayName = s.addr || 'Anonymous';
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
         ${pfpImg}
-        <div class="lb-addr">${displayName}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
+        <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
         <div class="lb-score">${s.score.toLocaleString()}</div>
       </div>`
     }).join('')
@@ -3400,9 +3397,8 @@ function showLeaderboardPage(scene) {
         No scores yet — be the first to play! 🎮
       </div>`
     return scores.map((s,i)=>{
-      const pfpImg = s.pfpUrl ? `<img src="${s.pfpUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,0.2);" onerror="this.style.display='none'" alt="${s.addr || 'user'}">` : '';
+      const pfpImg = s.pfpUrl ? `<img src="${s.pfpUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,0.2);" onerror="this.style.display='none'" alt="${s.addr}">` : '';
       const isYou = currentUser && s.addr === currentUser;
-      const displayName = s.addr || s.username || s.displayName || 'Anonymous';
       return `
       <div style="
         display:flex; align-items:center; gap:14px;
@@ -3414,7 +3410,7 @@ function showLeaderboardPage(scene) {
           ${i<3?rankEmoji[i]:'#'+(i+1)}
         </div>
         ${pfpImg}
-        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${displayName}${isYou?' <span style="color:#4d9fff">(you)</span>':''}</div>
+        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${s.addr}${isYou?' <span style="color:#4d9fff">(you)</span>':''}</div>
         <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
       </div>
     `}).join('')
