@@ -904,6 +904,14 @@ console.log('[ASSETS] All generated')
     font-size: 13px;
   }
   .lb-entry.you { background: rgba(0,82,255,0.15); border-color: rgba(0,82,255,0.3); }
+  .lb-pfp {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    flex-shrink: 0;
+  }
   .lb-rank { width: 20px; text-align: center; font-weight: 700; color: rgba(255,255,255,0.4); font-size: 12px; }
   .lb-rank.gold   { color: #fbbf24; }
   .lb-rank.silver { color: #9ca3af; }
@@ -1219,8 +1227,10 @@ window.W3 = {
         const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
         container.innerHTML = scores.map((s,i)=>{
           const isYou = currentUser && s.addr === currentUser;
+          const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
           return `<div class="lb-entry${isYou?' you':''}">
             <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+            ${pfpImg}
             <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
             <div class="lb-score">${s.score.toLocaleString()}</div>
           </div>`
@@ -1315,8 +1325,10 @@ window.W3 = {
     const currentAddr = window.W3.address ? window.W3.shortAddr(window.W3.address) : null;
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
       const isYou = (currentUser && s.addr === currentUser) || (currentAddr && s.addr === currentAddr);
+      const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+        ${pfpImg}
         <div class="lb-addr">${s.addr}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
         <div class="lb-score">${s.score.toLocaleString()}</div>
       </div>`
