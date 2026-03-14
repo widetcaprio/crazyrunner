@@ -1046,19 +1046,6 @@ function saveLocalScore(username, pfpUrl, score) {
 
 // Check if running inside Warpcast/Farcaster
 async function detectMiniAppMode() {
-  // First check localStorage (persists across pages)
-  const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
-  const savedUser = localStorage.getItem('crazy_farcaster_user');
-  if (savedMiniApp === 'true' && savedUser) {
-    try {
-      window.W3.farcasterUser = JSON.parse(savedUser);
-      window.W3.miniAppMode = true;
-      window.W3.connected = true;
-      console.log('[DEBUG] Restored from localStorage, user:', window.W3.farcasterUser.username);
-      return true;
-    } catch(e) {}
-  }
-  
   try {
     const { sdk } = await import('https://esm.sh/@farcaster/miniapp-sdk');
     await sdk.actions.ready();
@@ -1069,11 +1056,6 @@ async function detectMiniAppMode() {
       window.W3.farcasterUser = context.user;
       window.W3.connected = true;
       window.W3.connectedVia = 'farcaster';
-      
-      // Save to localStorage for persistence
-      localStorage.setItem('crazy_miniapp_mode', 'true');
-      localStorage.setItem('crazy_farcaster_user', JSON.stringify(context.user));
-      
       console.log('[DEBUG] Mini app detected! User:', context.user.username);
       return true;
     }
@@ -1188,28 +1170,25 @@ window.W3 = {
 
   // ── Submit score ──────────────────────────────────────────
   async submitScore(score) {
-    // Check if mini app mode - check localStorage as fallback
-    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    // Check if mini app mode using stored user data
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
+    console.log('[DEBUG] submitScore called, isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
     
-    // If not detected yet, check localStorage
-    if (!isMiniApp) {
-      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
-      const savedUser = localStorage.getItem('crazy_farcaster_user');
-      if (savedMiniApp === 'true' && savedUser) {
-        try {
-          window.W3.farcasterUser = JSON.parse(savedUser);
+    // If not detected yet, try to get from existing SDK
+    if (!isMiniApp && window.__farcasterSdk__) {
+      try {
+        const context = await window.__farcasterSdk__.context;
+        if (context?.user) {
           window.W3.miniAppMode = true;
+          window.W3.farcasterUser = context.user;
           window.W3.connected = true;
-          isMiniApp = true;
-          console.log('[DEBUG] Restored mini app user from localStorage:', window.W3.farcasterUser.username);
-        } catch(e) {}
-      }
+          console.log('[DEBUG] Detected from existing SDK, user:', context.user.username);
+        }
+      } catch(e) { console.log('[DEBUG] SDK context error:', e); }
     }
     
-    console.log('[DEBUG] submitScore isMiniApp:', isMiniApp, 'farcasterUser:', window.W3.farcasterUser);
-    
-    // MINI APP MODE: Save locally
-    if (isMiniApp && window.W3.farcasterUser) {
+    // MINI APP MODE: Save locally, don't submit to blockchain
+    if (window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl;
       saveLocalScore(username, pfpUrl, score);
@@ -1259,21 +1238,8 @@ window.W3 = {
     if(!container) return
     let scores = []
 
-    // Check if mini app mode - check localStorage as fallback
-    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-    
-    // If not detected yet, check localStorage
-    if (!isMiniApp) {
-      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
-      const savedUser = localStorage.getItem('crazy_farcaster_user');
-      if (savedMiniApp === 'true' && savedUser) {
-        try {
-          window.W3.farcasterUser = JSON.parse(savedUser);
-          window.W3.miniAppMode = true;
-          isMiniApp = true;
-        } catch(e) {}
-      }
-    }
+    // Check if mini app mode using stored user data
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
 
     // Reload local scores from storage first
     if (isMiniApp) {
@@ -2326,14 +2292,8 @@ class GameScene extends Phaser.Scene {
       submitBtnGfx.fillStyle(0xffffff, 0.10); submitBtnGfx.fillRoundedRect(-145,232,290,14,17)
     }
     
-    // Check if mini app mode - also check localStorage
-    let isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
-    if (!isMiniApp) {
-      const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
-      if (savedMiniApp === 'true') {
-        isMiniApp = true;
-      }
-    }
+    // Check if mini app mode
+    const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
     
     drawSubmitBtn(window.W3.connected || isMiniApp ? 'idle' : 'no_wallet')
 
@@ -3369,13 +3329,7 @@ function showLeaderboardPage(scene) {
 
   const rankColors = ['#fbbf24','#9ca3af','#b45309']
   const rankEmoji = ['🥇','🥈','🥉']
-  let isMiniApp = window.W3.miniAppMode;
-  if (!isMiniApp) {
-    const savedMiniApp = localStorage.getItem('crazy_miniapp_mode');
-    if (savedMiniApp === 'true') {
-      isMiniApp = true;
-    }
-  }
+  const isMiniApp = window.W3.miniAppMode;
   const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
 
   function renderRows(scores) {
