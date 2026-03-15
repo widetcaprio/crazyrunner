@@ -1848,8 +1848,12 @@ class StartScene extends Phaser.Scene {
     // Activate button properly when char selected
     cards.forEach(c=>c.ctr)  // just ensure cards rendered
 
-    // Controls hint — above bottom buttons
-    this.add.text(W/2,H*0.80,'SPACE = Jump   |   Hold C = Crouch',{
+    // Controls hint — show both PC and mobile
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const hintText = isMobile 
+      ? 'TAP = Jump   |   HOLD = Crouch' 
+      : 'SPACE = Jump   |   Hold C = Crouch';
+    this.add.text(W/2, H*0.80, hintText, {
       fontFamily:'Arial Black,sans-serif',fontSize:'13px',color:'#aabbcc',
       stroke:'#000020',strokeThickness:3
     }).setOrigin(0.5)
@@ -2107,6 +2111,7 @@ class GameScene extends Phaser.Scene {
 
   create(){
     const W=this.scale.width,H=this.scale.height
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     this.cameras.main.fadeIn(350,0,0,0)
 
     // Hide profile bar when game is running (mini app)
@@ -2243,8 +2248,9 @@ class GameScene extends Phaser.Scene {
       stroke:'#000000',strokeThickness:3
     }).setOrigin(0.5,0.5).setDepth(11)
 
-    // Hint — centered under the pill
-    this.add.text(rPanelX+rPanelW/2,rPanelY+38,'Hold C = Crouch',{
+    // Hint — show based on device
+    const hintText = isMobile ? 'Tap = Jump | Hold = Crouch' : 'Space = Jump | Hold C = Crouch';
+    this.add.text(rPanelX+rPanelW/2,rPanelY+38,hintText,{
       fontFamily:'Arial Black,sans-serif',fontSize:'13px',color:'#ffffff',
       stroke:'#000000',strokeThickness:3
     }).setOrigin(0.5,0).setDepth(11)
@@ -2446,7 +2452,35 @@ class GameScene extends Phaser.Scene {
 
     this.spaceKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
     this.cKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C)
-    this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
+    
+    // Mobile touch controls: tap = jump, hold = crouch
+    this._pointerDownTime = 0;
+    this.input.on('pointerdown', (pointer) => {
+      if(this.isGameOver) return;
+      this._pointerDownTime = Date.now();
+      // Start crouching after a brief hold
+      this._crouchTimeout = this.time.delayedCall(150, () => {
+        if(this._pointerDownTime > 0 && !this.isJumping) {
+          this._startCrouch();
+        }
+      });
+    })
+    this.input.on('pointerup', (pointer) => {
+      if(this.isGameOver) return;
+      // Cancel crouch timeout if it hasn't fired yet
+      if(this._crouchTimeout) {
+        this._crouchTimeout.remove();
+        this._crouchTimeout = null;
+      }
+      const pressDuration = Date.now() - this._pointerDownTime;
+      this._pointerDownTime = 0;
+      // If held for more than 150ms, it was a crouch (hold), otherwise jump (tap)
+      if (pressDuration > 150) {
+        this._stopCrouch();
+      } else if (!this.isJumping) {
+        this._tryJump();
+      }
+    })
 
     this.score=0;this.sessionCoins=0;this.isGameOver=false;this.isCrouching=false;this.isJumping=false;this._onBoat=false
     this.runTimeMs=0;this.currentSpeed=GameSettings.gameplay.baseSpeed
@@ -2563,6 +2597,12 @@ class GameScene extends Phaser.Scene {
     if(this.isGameOver||this.isJumping||this.isCrouching) return
     this.isCrouching=true;this._applyCrouchSize()
     this.player.play(this._crouchKey)
+  }
+
+  _stopCrouch(){
+    if(!this.isCrouching) return
+    this.isCrouching=false;this._applyStandSize()
+    this.player.play(this._runKey)
   }
 
   _standUp(){
