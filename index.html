@@ -999,6 +999,47 @@ const LEADERBOARD_ABI = [
 const LEADERBOARD_ADDRESS = "0x3ff2fad90059Cd49F175EA7BB8f777BDae7fd853"  // Base Mainnet
 
 // ═══════════════════════════════════════════════════════════════
+// SUPABASE CONFIG (for Mini App Leaderboard)
+// ═══════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://nwvbrfdzvufzygsjrooc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_MkLEQeG2nK7Qxy8wJJjbHw_wDevFxw6';
+const LEADERBOARD_TABLE = 'leaderboard';
+
+async function saveScoreToSupabase(username, pfpUrl, score) {
+  try {
+    const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/${LEADERBOARD_TABLE}?username=eq.${encodeURIComponent(username)}`, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    });
+    const existing = await checkRes.json();
+    if (existing && existing.length > 0) {
+      if (score > existing[0].score) {
+        await fetch(`${SUPABASE_URL}/rest/v1/${LEADERBOARD_TABLE}?username=eq.${encodeURIComponent(username)}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ score, pfp_url: pfpUrl })
+        });
+      }
+    } else {
+      await fetch(`${SUPABASE_URL}/rest/v1/${LEADERBOARD_TABLE}`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ username, pfp_url: pfpUrl, score })
+      });
+    }
+    return true;
+  } catch(e) { console.error('[Supabase] Error:', e); return false; }
+}
+
+async function loadScoresFromSupabase() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${LEADERBOARD_TABLE}?order=score.desc&limit=10`, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+    });
+    return await res.json() || [];
+  } catch(e) { console.error('[Supabase] Error:', e); return []; }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MINI APP MODE DETECTION
 // ═══════════════════════════════════════════════════════════════
 window.W3 = window.W3 || {};
@@ -1210,30 +1251,27 @@ window.W3 = {
       } catch(e) { }
     }
     
-    // MINI APP MODE: Save locally, don't submit to blockchain
+    // MINI APP MODE: Save to Supabase (cloud)
     if (window.W3.farcasterUser) {
       const username = window.W3.farcasterUser.username || window.W3.farcasterUser.displayName || 'Anonymous';
       const pfpUrl = window.W3.farcasterUser.pfpUrl || window.W3.farcasterUser.pfp || window.W3.farcasterUser.avatar || window.W3.farcasterUser.profileImage || window.W3.farcasterUser.profilePicture;
-      saveLocalScore(username, pfpUrl, score);
       
-      // Force reload and update the leaderboard UI immediately
-      loadLocalScores();
+      // Save to Supabase (cloud)
+      await saveScoreToSupabase(username, pfpUrl, score);
+      
+      // Reload leaderboard from Supabase
       this.loadLeaderboard();
       
       // Also update the leaderboard panel in the DOM
       const container = document.getElementById('lb-entries');
       if (container) {
-        const scores = window.W3.localScores.slice(0, 10).map(s => ({
-          addr: s.username || s.displayName || s.name || 'Anonymous',
-          score: s.score,
-          pfpUrl: s.pfpUrl
-        }));
+        const scores = await loadScoresFromSupabase();
         const medals = ['gold','silver','bronze'];
         const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
         container.innerHTML = scores.map((s,i)=>{
-          const isYou = currentUser && s.addr === currentUser;
-          const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
-          const displayName = s.addr || 'Anonymous';
+          const isYou = currentUser && s.username === currentUser;
+          const pfpImg = s.pfp_url ? `<img class="lb-pfp" src="${s.pfp_url}" alt="${s.username}" onerror="this.style.display='none'">` : '';
+          const displayName = s.username || 'Anonymous';
           return `<div class="lb-entry${isYou?' you':''}">
             <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
             ${pfpImg}
@@ -1289,19 +1327,12 @@ window.W3 = {
     // Check if mini app mode using stored user data
     const isMiniApp = window.W3.miniAppMode || (window.W3.farcasterUser != null && window.W3.farcasterUser != undefined);
 
-    // Always reload local scores from storage
-    loadLocalScores();
-
-    // MINI APP MODE: Show local scores (even if empty - will show user's saved score)
+    // MINI APP MODE: Load from Supabase (cloud)
     if (isMiniApp) {
-      scores = window.W3.localScores.slice(0, 10).map(s => ({
-        addr: s.username || s.displayName || s.name || 'Anonymous',
-        score: s.score,
-        pfpUrl: s.pfpUrl
-      }));
+      scores = await loadScoresFromSupabase();
       
-      // If no scores yet but we have a user, still show empty state message
-      if (scores.length === 0) {
+      // If no scores yet, show empty state
+      if (!scores || scores.length === 0) {
         container.innerHTML = '<div class="lb-empty">No scores yet — be the first!</div>';
         return;
       }
@@ -1328,13 +1359,15 @@ window.W3 = {
     const currentUser = window.W3.farcasterUser?.username || window.W3.farcasterUser?.displayName;
     const currentAddr = window.W3.address ? window.W3.shortAddr(window.W3.address) : null;
     container.innerHTML = scores.slice(0,10).map((s,i)=>{
-      const isYou = (currentUser && s.addr === currentUser) || (currentAddr && s.addr === currentAddr);
-      const pfpImg = s.pfpUrl ? `<img class="lb-pfp" src="${s.pfpUrl}" alt="${s.addr}" onerror="this.style.display='none'">` : '';
-      const displayName = s.addr || 'Anonymous';
+      // Handle both Supabase (username, pfp_url) and blockchain (addr, pfpUrl) formats
+      const playerName = s.username || s.addr || 'Anonymous';
+      const playerPfp = s.pfp_url || s.pfpUrl;
+      const isYou = (currentUser && playerName === currentUser) || (currentAddr && s.addr === currentAddr);
+      const pfpImg = playerPfp ? `<img class="lb-pfp" src="${playerPfp}" alt="${playerName}" onerror="this.style.display='none'">` : '';
       return `<div class="lb-entry${isYou?' you':''}">
         <div class="lb-rank ${medals[i]||''}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
         ${pfpImg}
-        <div class="lb-addr">${displayName}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
+        <div class="lb-addr">${playerName}${isYou?' <b style="color:#4d9fff">(you)</b>':''}</div>
         <div class="lb-score">${s.score.toLocaleString()}</div>
       </div>`
     }).join('')
@@ -3393,9 +3426,10 @@ function showLeaderboardPage(scene) {
         No scores yet — be the first to play! 🎮
       </div>`
     return scores.map((s,i)=>{
-      const pfpImg = s.pfpUrl ? `<img src="${s.pfpUrl}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,0.2);" onerror="this.style.display='none'" alt="${s.addr || 'user'}">` : '';
-      const isYou = currentUser && s.addr === currentUser;
-      const displayName = s.addr || s.username || s.displayName || 'Anonymous';
+      const playerName = s.username || s.addr || 'Anonymous';
+      const playerPfp = s.pfp_url || s.pfpUrl;
+      const pfpImg = playerPfp ? `<img src="${playerPfp}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,0.2);" onerror="this.style.display='none'" alt="${playerName}">` : '';
+      const isYou = currentUser && playerName === currentUser;
       return `
       <div style="
         display:flex; align-items:center; gap:14px;
@@ -3407,7 +3441,7 @@ function showLeaderboardPage(scene) {
           ${i<3?rankEmoji[i]:'#'+(i+1)}
         </div>
         ${pfpImg}
-        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${displayName}${isYou?' <span style="color:#4d9fff">(you)</span>':''}</div>
+        <div style="flex:1;color:rgba(255,255,255,0.7);font-size:13px;font-family:'DM Sans',sans-serif">${playerName}${isYou?' <span style="color:#4d9fff">(you)</span>':''}</div>
         <div style="font-weight:800;color:#4d9fff;font-size:15px;font-family:'Syne',sans-serif">${s.score.toLocaleString()}</div>
       </div>
     `}).join('')
@@ -3473,14 +3507,14 @@ function showLeaderboardPage(scene) {
   `
   document.body.appendChild(page)
 
-  // Load scores - local for mini app, on-chain for website
+  // Load scores - Supabase for mini app, on-chain for website
   ;(async ()=>{
     const rowsEl = document.getElementById('lb-rows')
     if(!rowsEl) return
     
-    // MINI APP MODE: Show local scores
+    // MINI APP MODE: Load from Supabase
     if (isMiniApp) {
-      const scores = loadLocalScores().slice(0, 10);
+      const scores = await loadScoresFromSupabase();
       rowsEl.innerHTML = renderRows(scores);
       return;
     }
