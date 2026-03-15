@@ -6,7 +6,7 @@
     "homeUrl": "https://crazyrunner.vercel.app",
     "imageUrl": "https://crazyrunner.vercel.app/image.png",
     "buttonTitle": "Play Now",
-    "splashImageUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
+    "splashImageUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo-square.png",
     "splashBackgroundColor": "#ffffff",
     "webhookUrl": "https://crazyrunner.vercel.app/api/webhook",
     "subtitle": "Onchain Endless Runner on Base",
