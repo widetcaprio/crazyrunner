@@ -1714,77 +1714,10 @@ class StartScene extends Phaser.Scene {
     titleUnder.lineBetween(W/2-160,210,W/2+160,210)
     this.tweens.add({targets:tRun,alpha:{from:1,to:0.82},duration:1800,yoyo:true,repeat:-1,ease:'Sine.InOut'})
 
-    // ── CONTROL SELECTION ─────────────────────────────────────────────────
-    const savedControls = localStorage.getItem('crazyrunner_controls');
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const defaultControls = savedControls || (isMobile ? 'mobile' : 'pc');
-    
-    // Show control selection if not set
-    if (!savedControls) {
-      const ctrlBg = this.add.rectangle(W/2, H/2, W, H, 0x000000, 0.85).setDepth(100);
-      const ctrlCard = this.add.container(W/2, H/2).setDepth(101);
-      
-      const cardGfx = this.add.graphics();
-      cardGfx.fillStyle(0x1a2a4a, 1);
-      cardGfx.fillRoundedRect(-180, -120, 360, 240, 20);
-      cardGfx.lineStyle(3, 0x4488ff, 1);
-      cardGfx.strokeRoundedRect(-180, -120, 360, 240, 20);
-      ctrlCard.add(cardGfx);
-      
-      ctrlCard.add(this.add.text(0, -90, 'Select Controls', {
-        fontFamily: 'Arial Black', fontSize: '24px', color: '#ffffff'
-      }).setOrigin(0.5));
-      
-      // PC Button
-      const pcBtn = this.add.container(0, -20);
-      const pcGfx = this.add.graphics();
-      pcGfx.fillStyle(defaultControls === 'pc' ? 0x22aa44 : 0x334466, 1);
-      pcGfx.fillRoundedRect(-140, -25, 280, 50, 10);
-      pcBtn.add(pcGfx);
-      pcBtn.add(this.add.text(0, 0, '🖥️ PC / Laptop\nSpace = Jump, C = Crouch', {
-        fontFamily: 'Arial', fontSize: '14px', color: '#ffffff', align: 'center'
-      }).setOrigin(0.5));
-      pcBtn.setSize(280, 50).setInteractive();
-      pcBtn.on('pointerdown', () => {
-        localStorage.setItem('crazyrunner_controls', 'pc');
-        ctrlCard.destroy();
-        ctrlBg.destroy();
-        this.scene.restart();
-      });
-      ctrlCard.add(pcBtn);
-      
-      // Mobile Button
-      const mobBtn = this.add.container(0, 50);
-      const mobGfx = this.add.graphics();
-      mobGfx.fillStyle(defaultControls === 'mobile' ? 0x22aa44 : 0x334466, 1);
-      mobGfx.fillRoundedRect(-140, -25, 280, 50, 10);
-      mobBtn.add(mobGfx);
-      mobBtn.add(this.add.text(0, 0, '📱 Mobile / Touch\nTap = Jump, Button = Crouch', {
-        fontFamily: 'Arial', fontSize: '14px', color: '#ffffff', align: 'center'
-      }).setOrigin(0.5));
-      mobBtn.setSize(280, 50).setInteractive();
-      mobBtn.on('pointerdown', () => {
-        localStorage.setItem('crazyrunner_controls', 'mobile');
-        ctrlCard.destroy();
-        ctrlBg.destroy();
-        this.scene.restart();
-      });
-      ctrlCard.add(mobBtn);
-      
-      // Skip text
-      ctrlCard.add(this.add.text(0, 100, 'Tap outside to use default', {
-        fontFamily: 'Arial', fontSize: '12px', color: '#888888'
-      }).setOrigin(0.5));
-      
-      // Click outside to close
-      ctrlBg.setInteractive();
-      ctrlBg.on('pointerdown', () => {
-        ctrlCard.destroy();
-        ctrlBg.destroy();
-      });
-      
-      return; // Wait for user to select
-    }
+    // ── CONTROL MODE ─────────────────────────────────────────────────
+    // Auto-detect based on device (can be changed in settings later)
+    this.controlMode = localStorage.getItem('crazyrunner_controls') || 
+      (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'mobile' : 'pc');
 
     // ── SUBTITLE — bold white ─────────────────────────────────────────────────
     this.add.text(W/2,224,'Choose your runner',{
@@ -1920,9 +1853,8 @@ class StartScene extends Phaser.Scene {
     // Activate button properly when char selected
     cards.forEach(c=>c.ctr)  // just ensure cards rendered
 
-    // Controls hint — show based on saved control mode
-    const savedControls = localStorage.getItem('crazyrunner_controls');
-    const hintText = savedControls === 'mobile' 
+    // Controls hint — show based on device
+    const hintText = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) 
       ? 'TAP = Jump   |   🏃 Button = Crouch' 
       : 'SPACE = Jump   |   Hold C = Crouch';
     this.add.text(W/2, H*0.80, hintText, {
@@ -2320,8 +2252,8 @@ class GameScene extends Phaser.Scene {
       stroke:'#000000',strokeThickness:3
     }).setOrigin(0.5,0.5).setDepth(11)
 
-    // Hint — show based on control mode
-    const hintText = this.controlMode === 'mobile' ? 'Tap = Jump | 🏃 = Crouch' : 'Space = Jump | Hold C = Crouch';
+    // Hint — show based on device
+    const hintText = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'Tap = Jump | 🏃 = Crouch' : 'Space = Jump | Hold C = Crouch';
     this.add.text(rPanelX+rPanelW/2,rPanelY+38,hintText,{
       fontFamily:'Arial Black,sans-serif',fontSize:'13px',color:'#ffffff',
       stroke:'#000000',strokeThickness:3
