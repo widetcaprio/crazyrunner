@@ -1342,13 +1342,13 @@ window.W3 = {
       try {
         const c = new ethers.Contract(LEADERBOARD_ADDRESS, LEADERBOARD_ABI, this.provider)
         const raw = await c.getTopScores()
-        // Deduplicate - keep only highest score per address
+        // Deduplicate - keep only highest score per address (case-insensitive)
         const addrScores = {};
         raw.forEach(x => {
-          const addr = x.player;
+          const addr = x.player ? x.player.toLowerCase() : '';
           const sc = Number(x.score);
           if (!addrScores[addr] || sc > addrScores[addr].score) {
-            addrScores[addr] = { addr: getPlayerLabel(addr), score: sc };
+            addrScores[addr] = { addr: getPlayerLabel(x.player), score: sc };
           }
         });
         scores = Object.values(addrScores).sort((a,b)=>b.score-a.score).slice(0,10)
@@ -3528,8 +3528,16 @@ function showLeaderboardPage(scene) {
       const contract = new ethers.Contract(LEADERBOARD_ADDRESS, LEADERBOARD_ABI, readProvider)
       const raw = await contract.getTopScores()
       if(raw && raw.length > 0) {
-        const shortAddr = a => a ? a.slice(0,6)+'...'+a.slice(-4) : ''
-        const mapped = raw.map(x=>({addr:getPlayerLabel(x.player), score:Number(x.score)}))
+        // Deduplicate - keep only highest score per address (case-insensitive)
+        const addrScores = {};
+        raw.forEach(x => {
+          const addr = x.player ? x.player.toLowerCase() : '';
+          const sc = Number(x.score);
+          if (!addrScores[addr] || sc > addrScores[addr].score) {
+            addrScores[addr] = { addr: getPlayerLabel(x.player), score: sc };
+          }
+        });
+        const mapped = Object.values(addrScores).sort((a,b)=>b.score-a.score).slice(0,10);
         rowsEl.innerHTML = renderRows(mapped)
       } else {
         rowsEl.innerHTML = renderRows([])
