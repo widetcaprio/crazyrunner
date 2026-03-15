@@ -1714,11 +1714,6 @@ class StartScene extends Phaser.Scene {
     titleUnder.lineBetween(W/2-160,210,W/2+160,210)
     this.tweens.add({targets:tRun,alpha:{from:1,to:0.82},duration:1800,yoyo:true,repeat:-1,ease:'Sine.InOut'})
 
-    // ── CONTROL MODE ─────────────────────────────────────────────────
-    // Auto-detect based on device (can be changed in settings later)
-    this.controlMode = localStorage.getItem('crazyrunner_controls') || 
-      (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'mobile' : 'pc');
-
     // ── SUBTITLE — bold white ─────────────────────────────────────────────────
     this.add.text(W/2,224,'Choose your runner',{
       fontFamily:'Arial Black,sans-serif',fontSize:'20px',color:'#ffffff',
@@ -1853,11 +1848,8 @@ class StartScene extends Phaser.Scene {
     // Activate button properly when char selected
     cards.forEach(c=>c.ctr)  // just ensure cards rendered
 
-    // Controls hint — show based on device
-    const hintText = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) 
-      ? 'TAP = Jump   |   🏃 Button = Crouch' 
-      : 'SPACE = Jump   |   Hold C = Crouch';
-    this.add.text(W/2, H*0.80, hintText, {
+    // Controls hint — above bottom buttons
+    this.add.text(W/2,H*0.80,'SPACE = Jump   |   Hold C = Crouch',{
       fontFamily:'Arial Black,sans-serif',fontSize:'13px',color:'#aabbcc',
       stroke:'#000020',strokeThickness:3
     }).setOrigin(0.5)
@@ -2115,7 +2107,6 @@ class GameScene extends Phaser.Scene {
 
   create(){
     const W=this.scale.width,H=this.scale.height
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     this.cameras.main.fadeIn(350,0,0,0)
 
     // Hide profile bar when game is running (mini app)
@@ -2252,9 +2243,8 @@ class GameScene extends Phaser.Scene {
       stroke:'#000000',strokeThickness:3
     }).setOrigin(0.5,0.5).setDepth(11)
 
-    // Hint — show based on device
-    const hintText = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'Tap = Jump | 🏃 = Crouch' : 'Space = Jump | Hold C = Crouch';
-    this.add.text(rPanelX+rPanelW/2,rPanelY+38,hintText,{
+    // Hint — centered under the pill
+    this.add.text(rPanelX+rPanelW/2,rPanelY+38,'Hold C = Crouch',{
       fontFamily:'Arial Black,sans-serif',fontSize:'13px',color:'#ffffff',
       stroke:'#000000',strokeThickness:3
     }).setOrigin(0.5,0).setDepth(11)
@@ -2454,30 +2444,9 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({targets:[goBtn,this.restartHint],alpha:{from:1,to:0.75},duration:700,yoyo:true,repeat:-1,ease:'Sine.InOut'})
     this.tweens.add({targets:this.msgTitle,scaleX:{from:1,to:1.03},scaleY:{from:1,to:1.03},duration:950,yoyo:true,repeat:-1,ease:'Sine.InOut'})
 
-    // Check control mode (saved or default based on device)
-    const savedMode = localStorage.getItem('crazyrunner_controls');
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    this.controlMode = savedMode || (isMobile ? 'mobile' : 'pc');
-    
-    if (this.controlMode === 'pc') {
-      this.spaceKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
-      this.cKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C)
-      // PC: tap screen = jump (for laptop with touch)
-      this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
-    } else {
-      // Mobile: tap = jump, crouch button
-      this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
-      // Add crouch button for mobile
-      this._crouchBtn = this.add.text(W-40, H-40, '🏃', {
-        fontSize: '32px'
-      }).setOrigin(0.5).setDepth(100).setInteractive({useHandCursor:true})
-      this._crouchBtn.on('pointerdown', () => {
-        if(!this.isGameOver && !this.isJumping) this._startCrouch();
-      })
-      this._crouchBtn.on('pointerup', () => {
-        this._stopCrouch();
-      })
-    }
+    this.spaceKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
+    this.cKey=this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C)
+    this.input.on('pointerdown',()=>{if(!this.isGameOver)this._tryJump()})
 
     this.score=0;this.sessionCoins=0;this.isGameOver=false;this.isCrouching=false;this.isJumping=false;this._onBoat=false
     this.runTimeMs=0;this.currentSpeed=GameSettings.gameplay.baseSpeed
@@ -2594,12 +2563,6 @@ class GameScene extends Phaser.Scene {
     if(this.isGameOver||this.isJumping||this.isCrouching) return
     this.isCrouching=true;this._applyCrouchSize()
     this.player.play(this._crouchKey)
-  }
-
-  _stopCrouch(){
-    if(!this.isCrouching) return
-    this.isCrouching=false;this._applyStandSize()
-    this.player.play(this._runKey)
   }
 
   _standUp(){
