@@ -7,7 +7,7 @@
     "imageUrl": "https://crazyrunner.vercel.app/image.png",
     "buttonTitle": "Play Now",
     "splashImageUrl": "https://raw.githubusercontent.com/widetcaprio/crazyrunner/main/logo.png",
-    "splashBackgroundColor": "#040a14",
+    "splashBackgroundColor": "#ffffff",
     "webhookUrl": "https://crazyrunner.vercel.app/api/webhook",
     "subtitle": "Onchain Endless Runner on Base",
     "description": "Run, dodge, and collect coins across 4 biomes. Submit your score onchain to Base blockchain!",
